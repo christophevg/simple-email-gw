@@ -1,10 +1,9 @@
+-include ~/.claude/Makefile
+
 # Makefile for simple-email-gw
 # Utility targets for common development actions
 
 .PHONY: run-env dev-env test test-all lint format typecheck build publish clean all help docs
-
-# Default target
-.DEFAULT_GOAL := help
 
 ## run-env: Install production dependencies
 run-env:
@@ -60,8 +59,8 @@ clean:
 	rm -rf docs/_build
 	find . -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
 
-## all: Run lint, test, and typecheck
-all: dev-env
+## check: Run lint, test, and typecheck
+check: dev-env
 	uv run ruff check src/ tests/
 	uv run pytest
 	uv run mypy src/
