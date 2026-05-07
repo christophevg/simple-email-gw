@@ -1,0 +1,171 @@
+# Quick Start
+
+Get up and running with simple-email-gw in minutes.
+
+## MCP Server Setup
+
+The easiest way to use simple-email-gw is through the MCP server.
+
+### 1. Configure Environment
+
+Create a `.env` file or set environment variables:
+
+```bash
+# Single account configuration
+EMAIL_IMAP_HOST=imap.gmail.com
+EMAIL_SMTP_HOST=smtp.gmail.com
+EMAIL_USERNAME=your-email@gmail.com
+EMAIL_PASSWORD=your-app-password
+```
+
+For Gmail, you need an **App Password** (not your regular password):
+
+1. Go to Google Account settings
+2. Security → 2-Step Verification → App passwords
+3. Generate a new app password for "Mail"
+4. Use that password in `EMAIL_PASSWORD`
+
+### 2. Run the MCP Server
+
+```bash
+uvx --from simple-email-gw mcp-server
+```
+
+The server starts and waits for MCP commands from your AI assistant.
+
+### 3. Use with AI Assistant
+
+Configure your AI assistant to use the MCP server. The server provides:
+
+**Tools:**
+- `list_accounts` - List configured email accounts
+- `list_folders` - List IMAP folders
+- `search_emails` - Search messages
+- `get_email` - Fetch a message
+- `send_email` - Send email
+- `reply_email` - Reply to thread
+- `move_email` - Move between folders
+- `delete_email` - Delete message
+- `mark_email_read` - Mark as read
+
+## Programmatic Usage
+
+Use the Python API directly in your code.
+
+### IMAP Client
+
+```python
+import asyncio
+from simple_email_gw import IMAPClient, EmailAccount
+
+async def main():
+  account = EmailAccount(
+    name="gmail",
+    imap_host="imap.gmail.com",
+    smtp_host="smtp.gmail.com",
+    username="your-email@gmail.com",
+    password="your-app-password"
+  )
+
+  async with IMAPClient(account) as client:
+    # List folders
+    folders = await client.list_folders()
+    print(f"Found {len(folders)} folders")
+
+    # Search for unread messages
+    message_ids = await client.search(folder="INBOX", criteria="UNSEEN")
+    print(f"Found {len(message_ids)} unread messages")
+
+    # Fetch a message
+    if message_ids:
+      msg = await client.fetch_message(message_ids[0])
+      print(f"Subject: {msg['subject']}")
+      print(f"From: {msg['from']}")
+
+asyncio.run(main())
+```
+
+### SMTP Client
+
+```python
+import asyncio
+from simple_email_gw import SMTPClient, EmailAccount
+
+async def main():
+  account = EmailAccount(
+    name="gmail",
+    imap_host="imap.gmail.com",
+    smtp_host="smtp.gmail.com",
+    username="your-email@gmail.com",
+    password="your-app-password"
+  )
+
+  smtp = SMTPClient(account)
+  result = await smtp.send_email(
+    to=["recipient@example.com"],
+    subject="Hello from simple-email-gw",
+    body="This is a test email.",
+  )
+  print(f"Sent: {result}")
+
+asyncio.run(main())
+```
+
+### Connection Pool
+
+For multiple accounts, use the connection pool:
+
+```python
+import asyncio
+from simple_email_gw import get_pool
+
+async def main():
+  pool = await get_pool()
+
+  # Get accounts from environment
+  accounts = await pool.get_accounts()
+  print(f"Configured accounts: {[a.name for a in accounts]}")
+
+  # Get client for specific account
+  client = await pool.get_imap_client("gmail")
+  folders = await client.list_folders()
+  print(f"Folders: {folders}")
+
+asyncio.run(main())
+```
+
+## Multiple Accounts
+
+Configure multiple accounts using JSON:
+
+```bash
+export EMAIL_ACCOUNTS_JSON='[
+  {
+    "name": "work",
+    "imap_host": "imap.work.com",
+    "smtp_host": "smtp.work.com",
+    "username": "work@company.com",
+    "password": "work-password"
+  },
+  {
+    "name": "personal",
+    "imap_host": "imap.gmail.com",
+    "smtp_host": "smtp.gmail.com",
+    "username": "personal@gmail.com",
+    "password": "app-password"
+  }
+]'
+```
+
+Then access by name:
+
+```python
+work_client = await pool.get_imap_client("work")
+personal_client = await pool.get_imap_client("personal")
+```
+
+## Next Steps
+
+- [Configuration](configuration.md) - All configuration options
+- [Security](security.md) - Security features
+- [API Reference](api.md) - Complete API documentation

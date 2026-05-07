@@ -1,0 +1,108 @@
+[project]
+name = "simple-email-gw"
+version = "0.1.0"
+description = "Simple email gateway with IMAP/SMTP clients, connection pooling, and MCP server"
+authors = [{name = "Christophe VG", email = "contact@christophe.vg"}]
+readme = "README.md"
+requires-python = ">=3.10"
+license = {text = "MIT"}
+keywords = ["email", "imap", "smtp", "mcp", "model-context-protocol"]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Intended Audience :: Developers",
+  "License :: OSI Approved :: MIT License",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Typing :: Typed",
+]
+
+dependencies = [
+  "fastmcp>=3.0.0",
+  "aioimaplib>=1.0.0",
+  "aiosmtplib>=3.0.0",
+  "pydantic>=2.0.0",
+  "pydantic-settings>=2.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.0.0",
+  "pytest-asyncio>=0.23.0",
+  "pytest-cov>=4.1.0",
+  "ruff>=0.4.0",
+  "mypy>=1.9.0",
+  "tox>=4.0.0",
+  "twine>=6.0.0",
+]
+docs = [
+  "sphinx>=7.0.0",
+  "myst-parser>=2.0.0",
+  "furo>=2024.0.0",
+]
+
+[project.scripts]
+mcp-server = "simple_email_gw.mcp:run"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/simple_email_gw"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "W", "UP"]
+ignore = ["E501"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+
+[tool.mypy]
+python_version = "3.10"
+warn_return_any = true
+warn_unused_ignores = false
+ignore_missing_imports = true
+no_implicit_optional = true
+warn_redundant_casts = true
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+check_untyped_defs = true
+disallow_untyped_decorators = false
+
+[[tool.mypy.overrides]]
+module = "aioimaplib.*"
+ignore_missing_imports = true
+ignore_errors = true
+
+[[tool.mypy.overrides]]
+module = "simple_email_gw.imap.client"
+disable_error_code = ["no-any-return", "assignment", "arg-type", "union-attr", "dict-item"]
+
+[[tool.mypy.overrides]]
+module = "simple_email_gw.smtp.client"
+disable_error_code = ["assignment", "arg-type"]
+
+[tool.tox]
+env_list = ["py310", "py311", "py312"]
+
+[tool.tox.env_run_base]
+description = "Run tests under {base_python}"
+deps = ["-e .[dev]"]
+commands = [["pytest", "-v"]]
+
+[tool.tox.env.lint]
+description = "Run linting"
+deps = ["-e .[dev]"]
+commands = [["ruff", "check", "src/", "tests/"]]
+
+[tool.tox.env.typecheck]
+description = "Run type checking"
+deps = ["-e .[dev]"]
+commands = [["mypy", "src/"]]
