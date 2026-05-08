@@ -60,10 +60,7 @@ clean:
 	find . -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
 
 ## check: Run lint, test, and typecheck
-check: dev-env
-	uv run ruff check src/ tests/
-	uv run pytest
-	uv run mypy src/
+check: dev-env format test typecheck
 
 ## email-gw-mcp-server: Run the MCP server
 email-gw-mcp-server: run-env
