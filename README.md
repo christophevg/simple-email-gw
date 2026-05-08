@@ -11,7 +11,7 @@
 
 A simple email gateway with IMAP/SMTP clients, connection pooling, and MCP server for AI assistant integration.
 
-> **Note:** This package provides **async-only** APIs. All client methods are async and must be used with `asyncio.run()` or in async contexts.
+> **Note:** This package provides both async and sync APIs. Async clients are recommended for async applications. Use sync wrapper clients (SyncIMAPClient, SyncSMTPClient) for simpler synchronous code.
 
 ## Rationale
 
@@ -20,6 +20,7 @@ This project was built using an agentic workflow — agents created the implemen
 ## Features
 
 - Async IMAP and SMTP clients (aioimaplib, aiosmtplib)
+- **Sync wrapper clients** for simpler synchronous usage (SyncIMAPClient, SyncSMTPClient)
 - Connection pooling with automatic management
 - Token bucket rate limiting
 - Audit logging for security compliance
@@ -92,6 +93,40 @@ async def main():
 
 asyncio.run(main())
 ```
+
+### Sync Client Usage
+
+For simpler synchronous code, use the sync wrapper clients:
+
+```python
+from simple_email_gw import SyncIMAPClient, SyncSMTPClient, EmailAccount
+
+# Create account configuration
+account = EmailAccount(
+  name="work",
+  imap_host="imap.gmail.com",
+  smtp_host="smtp.gmail.com",
+  username="user@gmail.com",
+  password="app-password"
+)
+
+# Sync IMAP usage
+with SyncIMAPClient(account) as client:
+  folders = client.list_folders()
+  messages = client.search(folder="INBOX")
+  print(f"Found {len(messages)} messages")
+
+# Sync SMTP usage
+with SyncSMTPClient(account) as client:
+  result = client.send_email(
+    to=["recipient@example.com"],
+    subject="Test",
+    body="Hello world"
+  )
+  print(f"Sent: {result}")
+```
+
+> **Note:** Sync clients use a dedicated event loop in a background thread (Strategy 2). They preserve all async client benefits including connection pooling, rate limiting, and security features. Use async clients in async contexts (FastAPI, asyncio, etc.) for better performance.
 
 ## Configuration
 

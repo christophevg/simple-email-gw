@@ -3,6 +3,7 @@
 from simple_email_gw.config import EmailAccount, RateLimitConfig, RecipientWhitelist, ServerConfig
 from simple_email_gw.connections.pool import ConnectionPool, RateLimitError, get_pool
 from simple_email_gw.imap.client import IMAPClient, SecurityError
+from simple_email_gw.imap.sync_client import SyncIMAPClient
 from simple_email_gw.safety.audit import (
   log_attachment_download,
   log_auth_attempt,
@@ -18,12 +19,15 @@ from simple_email_gw.safety.sanitize import (
   sanitize_subject,
 )
 from simple_email_gw.smtp.client import SMTPClient, WhitelistError, validate_email
+from simple_email_gw.smtp.sync_client import SyncSMTPClient
 
 __version__ = "0.1.0"
 __all__ = [
   # Clients
   "IMAPClient",
   "SMTPClient",
+  "SyncIMAPClient",
+  "SyncSMTPClient",
   # Connection management
   "ConnectionPool",
   "RateLimitError",

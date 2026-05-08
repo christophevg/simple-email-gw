@@ -39,11 +39,12 @@ A simple email gateway with IMAP/SMTP clients, connection pooling, and MCP serve
 
 .. note::
 
-   This package provides **async-only** APIs. All client methods are async and must be used with ``asyncio.run()`` or in async contexts.
+   This package provides both async and sync APIs. Async clients are recommended for async applications. Use sync wrapper clients (SyncIMAPClient, SyncSMTPClient) for simpler synchronous code.
 
 **Why Simple Email Gateway?**
 
 - **Async-first**: Built on aioimaplib and aiosmtplib for modern async Python
+- **Sync support**: SyncIMAPClient and SyncSMTPClient wrappers for simpler synchronous usage
 - **Production-ready**: Connection pooling, rate limiting, audit logging
 - **Security-focused**: TLS 1.2+ minimum, CRLF injection prevention, recipient whitelisting
 - **AI-ready**: MCP server for seamless AI assistant integration
@@ -78,6 +79,7 @@ Features
 
    installation
    rationale
+   sync-clients
    api
 
 .. toctree::
