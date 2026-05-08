@@ -65,9 +65,9 @@ check: dev-env
 	uv run pytest
 	uv run mypy src/
 
-## mcp-server: Run the MCP server
-mcp-server: run-env
-	uv tool run --with . mcp-server
+## email-gw-mcp-server: Run the MCP server
+email-gw-mcp-server: run-env
+	uv tool run --with . email-gw-mcp-server
 
 ## help: Show this help message
 help:

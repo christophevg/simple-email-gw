@@ -56,7 +56,7 @@ export EMAIL_USERNAME=your-email@gmail.com
 export EMAIL_PASSWORD=your-app-password
 
 # Run server
-uvx --from simple-email-gw mcp-server
+uvx --from simple-email-gw email-gw-mcp-server
 ```
 
 ### Programmatic Usage
@@ -186,7 +186,7 @@ make test       # Run tests
 make lint       # Run linter
 make typecheck  # Run type checker
 make all        # Run all checks
-make mcp-server # Run the MCP server
+make email-gw-mcp-server # Run the MCP server
 ```
 
 ## License

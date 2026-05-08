@@ -176,7 +176,7 @@ EMAIL_PASSWORD=your-app-password
 EOF
 
 # Run the MCP server
-make mcp-server
+make email-gw-mcp-server
 ```
 
 ### Adding New Tools

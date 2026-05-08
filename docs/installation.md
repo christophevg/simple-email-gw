@@ -38,7 +38,7 @@ uv add simple-email-gw
 For running the MCP server without installation:
 
 ```bash
-uvx --from simple-email-gw mcp-server
+uvx --from simple-email-gw email-gw-mcp-server
 ```
 
 ## Development Installation

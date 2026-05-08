@@ -44,7 +44,7 @@ docs = [
 ]
 
 [project.scripts]
-mcp-server = "simple_email_gw.mcp:run"
+email-gw-mcp-server = "simple_email_gw.mcp:run"
 
 [build-system]
 requires = ["hatchling"]

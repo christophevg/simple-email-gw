@@ -27,7 +27,7 @@ uv add simple-email-gw
 ### Run with uvx
 
 ```bash
-uvx --from simple-email-gw mcp-server
+uvx --from simple-email-gw email-gw-mcp-server
 ```
 
 ### Dependencies
