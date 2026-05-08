@@ -15,7 +15,7 @@ A simple email gateway with IMAP/SMTP clients, connection pooling, and MCP serve
 
 ## Rationale
 
-This project was built using an agentic workflow — agents created the implementation from architectural requirements. For the full story, see [Rationale](docs/rationale.md).
+This project was built using an agentic workflow — agents created the implementation from architectural requirements. For the full story, see the `rationale documentation <https://simple-email-gw.readthedocs.io/en/latest/rationale.html>`_.
 
 ## Features
 
@@ -112,7 +112,7 @@ Multiple accounts (JSON):
 EMAIL_ACCOUNTS_JSON='[{"name":"work","imap_host":"imap.gmail.com","smtp_host":"smtp.gmail.com","username":"work@example.com","password":"secret"},{"name":"personal","imap_host":"imap.icloud.com","smtp_host":"smtp.icloud.com","username":"personal@icloud.com","password":"secret"}]'
 ```
 
-See [docs/configuration.md](docs/configuration.md) for detailed configuration options.
+See the `configuration documentation <https://simple-email-gw.readthedocs.io/en/latest/configuration.html>`_ for detailed options.
 
 ### Rate Limiting
 
@@ -155,7 +155,7 @@ Token bucket algorithm prevents abuse with separate limits per account.
 
 All operations are logged for security compliance.
 
-See [docs/security.md](docs/security.md) for complete security documentation.
+See the `security documentation <https://simple-email-gw.readthedocs.io/en/latest/security.html>`_ for complete details.
 
 ## MCP Tools
 
@@ -172,11 +172,11 @@ See [docs/security.md](docs/security.md) for complete security documentation.
 | `delete_email` | Delete message |
 | `mark_email_read` | Mark message as read |
 
-See [docs/api.md](docs/api.md) for complete API reference.
+See the `API documentation <https://simple-email-gw.readthedocs.io/en/latest/api.html>`_ for complete API reference.
 
 ## Development
 
-See [docs/development.md](docs/development.md) for development setup and contribution guidelines.
+See the `development documentation <https://simple-email-gw.readthedocs.io/en/latest/development.html>`_ for development setup and contribution guidelines.
 
 Quick commands:
 
