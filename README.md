@@ -126,11 +126,56 @@ with SyncSMTPClient(account) as client:
   print(f"Sent: {result}")
 ```
 
+### Interactive CLI
+
+Run the interactive CLI for managing email:
+
+```bash
+# Create .env file with your email account
+cp .env.example .env
+# Edit .env with your account details
+
+# Run CLI
+uv run email-gw-cli
+
+# Or if installed globally
+email-gw-cli
+```
+
+**Getting Started:**
+
+```bash
+none:INBOX> help                    # Show available commands
+none:INBOX> accounts                # List configured accounts
+none:INBOX> use work                # Connect to 'work' account
+work:INBOX> folders                 # List folders
+work:INBOX> ls                      # List emails
+work:INBOX> show 42                 # View email #42
+work:INBOX> theme                   # Toggle light/dark theme
+work:INBOX> quit                    # Exit CLI
+```
+
+**Features:**
+
+- **Command history** - Use ↑/↓ arrows to navigate previous commands
+- **Theme support** - Switch between light and dark color themes
+- **Auto-completion** - Tab completion for commands (coming soon)
+- **Rich formatting** - Tables, panels, and syntax-highlighted output
+
+See the [CLI documentation](https://simple-email-gw.readthedocs.io/en/latest/cli.html) for complete command reference.
+
 > **Note:** Sync clients use a dedicated event loop in a background thread (Strategy 2). They preserve all async client benefits including connection pooling, rate limiting, and security features. Use async clients in async contexts (FastAPI, asyncio, etc.) for better performance.
 
 ## Configuration
 
 ### Environment Variables
+
+The CLI and MCP server automatically load environment variables from a `.env` file in the current directory. Copy `.env.example` to `.env` and configure your email accounts:
+
+```bash
+cp .env.example .env
+# Edit .env with your email account details
+```
 
 Single account configuration:
 

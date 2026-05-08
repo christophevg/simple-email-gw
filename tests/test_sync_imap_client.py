@@ -54,7 +54,7 @@ class TestSyncIMAPClientContextManager:
       smtp_host="smtp.example.com",
       username="test@example.com",
     )
-    with patch.object(SyncIMAPClient, 'disconnect', autospec=True) as mock_disconnect:
+    with patch.object(SyncIMAPClient, "disconnect", autospec=True) as mock_disconnect:
       with SyncIMAPClient(account) as client:
         assert client is not None
       mock_disconnect.assert_called_once()
@@ -71,7 +71,7 @@ class TestSyncIMAPClientContextManager:
       smtp_host="smtp.example.com",
       username="test@example.com",
     )
-    with patch.object(SyncIMAPClient, 'disconnect', autospec=True) as mock_disconnect:
+    with patch.object(SyncIMAPClient, "disconnect", autospec=True) as mock_disconnect:
       try:
         with SyncIMAPClient(account):
           raise ValueError("Test exception")
@@ -159,7 +159,7 @@ class TestSyncIMAPClientConnect:
     )
     client = SyncIMAPClient(account)
     try:
-      with patch.object(client._async_client, 'connect', new_callable=AsyncMock) as mock_connect:
+      with patch.object(client._async_client, "connect", new_callable=AsyncMock) as mock_connect:
         mock_connect.return_value = MagicMock()
         client.connect()
         mock_connect.assert_called_once()
@@ -181,7 +181,7 @@ class TestSyncIMAPClientConnect:
     client = SyncIMAPClient(account)
     try:
       mock_connection = MagicMock(spec=IMAP4_SSL)
-      with patch.object(client._async_client, 'connect', new_callable=AsyncMock) as mock_connect:
+      with patch.object(client._async_client, "connect", new_callable=AsyncMock) as mock_connect:
         mock_connect.return_value = mock_connection
         result = client.connect()
         assert result is mock_connection
@@ -202,7 +202,7 @@ class TestSyncIMAPClientConnect:
     )
     client = SyncIMAPClient(account)
     try:
-      with patch.object(client._async_client, 'connect', new_callable=AsyncMock) as mock_connect:
+      with patch.object(client._async_client, "connect", new_callable=AsyncMock) as mock_connect:
         mock_connect.side_effect = TimeoutError("Connection timeout")
         with pytest.raises(RuntimeError, match="timed out"):
           client.connect()
@@ -223,7 +223,7 @@ class TestSyncIMAPClientConnect:
     )
     client = SyncIMAPClient(account)
     try:
-      with patch.object(client._async_client, 'connect', new_callable=AsyncMock) as mock_connect:
+      with patch.object(client._async_client, "connect", new_callable=AsyncMock) as mock_connect:
         mock_connect.side_effect = ConnectionError("Connection lost")
         with pytest.raises(RuntimeError, match="Connection error"):
           client.connect()
@@ -247,7 +247,9 @@ class TestSyncIMAPClientDisconnect:
       username="test@example.com",
     )
     client = SyncIMAPClient(account)
-    with patch.object(client._async_client, 'disconnect', new_callable=AsyncMock) as mock_disconnect:
+    with patch.object(
+      client._async_client, "disconnect", new_callable=AsyncMock
+    ) as mock_disconnect:
       client.disconnect()
       mock_disconnect.assert_called_once()
 
@@ -304,7 +306,7 @@ class TestSyncIMAPClientListFolders:
     )
     client = SyncIMAPClient(account)
     try:
-      with patch.object(client._async_client, 'list_folders', new_callable=AsyncMock) as mock_list:
+      with patch.object(client._async_client, "list_folders", new_callable=AsyncMock) as mock_list:
         mock_list.return_value = [{"name": "INBOX", "flags": "\\HasNoChildren", "delimiter": "/"}]
         result = client.list_folders()
         mock_list.assert_called_once()
@@ -327,10 +329,10 @@ class TestSyncIMAPClientListFolders:
     client = SyncIMAPClient(account)
     try:
       folders = [
-        {"name": "INBOX", "flags": "\\HasNoChildren", "delimiter": "/"},
-        {"name": "Sent", "flags": "\\HasNoChildren", "delimiter": "/"},
+        {"name": "INBOX", "flags": ["\\HasNoChildren"], "delimiter": "/"},
+        {"name": "Sent", "flags": ["\\HasNoChildren"], "delimiter": "/"},
       ]
-      with patch.object(client._async_client, 'list_folders', new_callable=AsyncMock) as mock_list:
+      with patch.object(client._async_client, "list_folders", new_callable=AsyncMock) as mock_list:
         mock_list.return_value = folders
         result = client.list_folders()
         assert isinstance(result, list)
@@ -352,7 +354,7 @@ class TestSyncIMAPClientListFolders:
     )
     client = SyncIMAPClient(account)
     try:
-      with patch.object(client._async_client, 'list_folders', new_callable=AsyncMock) as mock_list:
+      with patch.object(client._async_client, "list_folders", new_callable=AsyncMock) as mock_list:
         mock_list.side_effect = Exception("List failed")
         with pytest.raises(RuntimeError, match="Operation failed"):
           client.list_folders()
@@ -377,7 +379,9 @@ class TestSyncIMAPClientSelectFolder:
     )
     client = SyncIMAPClient(account)
     try:
-      with patch.object(client._async_client, 'select_folder', new_callable=AsyncMock) as mock_select:
+      with patch.object(
+        client._async_client, "select_folder", new_callable=AsyncMock
+      ) as mock_select:
         mock_select.return_value = {"folder": "INBOX", "count": 10}
         result = client.select_folder("INBOX")
         mock_select.assert_called_once_with("INBOX")
@@ -399,7 +403,9 @@ class TestSyncIMAPClientSelectFolder:
     )
     client = SyncIMAPClient(account)
     try:
-      with patch.object(client._async_client, 'select_folder', new_callable=AsyncMock) as mock_select:
+      with patch.object(
+        client._async_client, "select_folder", new_callable=AsyncMock
+      ) as mock_select:
         mock_select.return_value = {"folder": "Archive", "count": 42}
         result = client.select_folder("Archive")
         assert result["folder"] == "Archive"
@@ -425,7 +431,7 @@ class TestSyncIMAPClientSearch:
     )
     client = SyncIMAPClient(account)
     try:
-      with patch.object(client._async_client, 'search', new_callable=AsyncMock) as mock_search:
+      with patch.object(client._async_client, "search", new_callable=AsyncMock) as mock_search:
         mock_search.return_value = ["1", "2", "3"]
         result = client.search(folder="INBOX", criteria="ALL", limit=50)
         mock_search.assert_called_once_with("INBOX", "ALL", 50)
@@ -447,7 +453,7 @@ class TestSyncIMAPClientSearch:
     )
     client = SyncIMAPClient(account)
     try:
-      with patch.object(client._async_client, 'search', new_callable=AsyncMock) as mock_search:
+      with patch.object(client._async_client, "search", new_callable=AsyncMock) as mock_search:
         mock_search.return_value = ["10", "20", "30"]
         result = client.search()
         assert isinstance(result, list)
@@ -474,7 +480,9 @@ class TestSyncIMAPClientFetchMessage:
     client = SyncIMAPClient(account)
     try:
       msg = {"id": "1", "folder": "INBOX", "subject": "Test"}
-      with patch.object(client._async_client, 'fetch_message', new_callable=AsyncMock) as mock_fetch:
+      with patch.object(
+        client._async_client, "fetch_message", new_callable=AsyncMock
+      ) as mock_fetch:
         mock_fetch.return_value = msg
         result = client.fetch_message("1", "INBOX")
         mock_fetch.assert_called_once_with("1", "INBOX")
@@ -503,7 +511,9 @@ class TestSyncIMAPClientFetchMessage:
         "from": "sender@example.com",
         "to": "recipient@example.com",
       }
-      with patch.object(client._async_client, 'fetch_message', new_callable=AsyncMock) as mock_fetch:
+      with patch.object(
+        client._async_client, "fetch_message", new_callable=AsyncMock
+      ) as mock_fetch:
         mock_fetch.return_value = msg
         result = client.fetch_message("1")
         assert "id" in result
@@ -529,7 +539,7 @@ class TestSyncIMAPClientMoveMessage:
     )
     client = SyncIMAPClient(account)
     try:
-      with patch.object(client._async_client, 'move_message', new_callable=AsyncMock) as mock_move:
+      with patch.object(client._async_client, "move_message", new_callable=AsyncMock) as mock_move:
         mock_move.return_value = True
         result = client.move_message("1", "INBOX", "Archive")
         mock_move.assert_called_once_with("1", "INBOX", "Archive")
@@ -551,7 +561,7 @@ class TestSyncIMAPClientMoveMessage:
     )
     client = SyncIMAPClient(account)
     try:
-      with patch.object(client._async_client, 'move_message', new_callable=AsyncMock) as mock_move:
+      with patch.object(client._async_client, "move_message", new_callable=AsyncMock) as mock_move:
         mock_move.return_value = True
         result = client.move_message("1", "INBOX", "Archive")
         assert result is True
@@ -576,7 +586,9 @@ class TestSyncIMAPClientDeleteMessage:
     )
     client = SyncIMAPClient(account)
     try:
-      with patch.object(client._async_client, 'delete_message', new_callable=AsyncMock) as mock_delete:
+      with patch.object(
+        client._async_client, "delete_message", new_callable=AsyncMock
+      ) as mock_delete:
         mock_delete.return_value = True
         result = client.delete_message("1", "INBOX", expunge=True)
         mock_delete.assert_called_once_with("1", "INBOX", True)
@@ -598,7 +610,9 @@ class TestSyncIMAPClientDeleteMessage:
     )
     client = SyncIMAPClient(account)
     try:
-      with patch.object(client._async_client, 'delete_message', new_callable=AsyncMock) as mock_delete:
+      with patch.object(
+        client._async_client, "delete_message", new_callable=AsyncMock
+      ) as mock_delete:
         mock_delete.return_value = True
         result = client.delete_message("1")
         assert result is True
@@ -623,7 +637,7 @@ class TestSyncIMAPClientMarkMessage:
     )
     client = SyncIMAPClient(account)
     try:
-      with patch.object(client._async_client, 'mark_message', new_callable=AsyncMock) as mock_mark:
+      with patch.object(client._async_client, "mark_message", new_callable=AsyncMock) as mock_mark:
         mock_mark.return_value = True
         result = client.mark_message("1", "INBOX", "\\Seen", "add")
         mock_mark.assert_called_once_with("1", "INBOX", "\\Seen", "add")
@@ -645,7 +659,7 @@ class TestSyncIMAPClientMarkMessage:
     )
     client = SyncIMAPClient(account)
     try:
-      with patch.object(client._async_client, 'mark_message', new_callable=AsyncMock) as mock_mark:
+      with patch.object(client._async_client, "mark_message", new_callable=AsyncMock) as mock_mark:
         mock_mark.return_value = True
         result = client.mark_message("1", "INBOX", "\\Seen")
         assert result is True
@@ -670,7 +684,9 @@ class TestSyncIMAPClientDownloadAttachment:
     )
     client = SyncIMAPClient(account)
     try:
-      with patch.object(client._async_client, 'download_attachment', new_callable=AsyncMock) as mock_download:
+      with patch.object(
+        client._async_client, "download_attachment", new_callable=AsyncMock
+      ) as mock_download:
         mock_download.return_value = "/tmp/test.pdf"
         result = client.download_attachment("1", "INBOX", "test.pdf", "/tmp")
         mock_download.assert_called_once_with("1", "INBOX", "test.pdf", "/tmp")
@@ -692,7 +708,9 @@ class TestSyncIMAPClientDownloadAttachment:
     )
     client = SyncIMAPClient(account)
     try:
-      with patch.object(client._async_client, 'download_attachment', new_callable=AsyncMock) as mock_download:
+      with patch.object(
+        client._async_client, "download_attachment", new_callable=AsyncMock
+      ) as mock_download:
         mock_download.return_value = "/absolute/path/to/file.pdf"
         result = client.download_attachment("1", "INBOX", "file.pdf", "/tmp")
         assert result == "/absolute/path/to/file.pdf"
@@ -717,7 +735,7 @@ class TestSyncIMAPClientHasCapability:
     )
     client = SyncIMAPClient(account)
     try:
-      with patch.object(client._async_client, 'has_capability', return_value=True) as mock_cap:
+      with patch.object(client._async_client, "has_capability", return_value=True) as mock_cap:
         result = client.has_capability("MOVE")
         mock_cap.assert_called_once_with("MOVE")
         assert result is True
@@ -738,7 +756,7 @@ class TestSyncIMAPClientHasCapability:
     )
     client = SyncIMAPClient(account)
     try:
-      with patch.object(client._async_client, 'has_capability', return_value=False):
+      with patch.object(client._async_client, "has_capability", return_value=False):
         result = client.has_capability("NONEXISTENT")
         assert isinstance(result, bool)
         assert result is False
@@ -763,7 +781,7 @@ class TestSyncIMAPClientErrorHandling:
     )
     client = SyncIMAPClient(account)
     try:
-      with patch.object(client._async_client, 'search', new_callable=AsyncMock) as mock_search:
+      with patch.object(client._async_client, "search", new_callable=AsyncMock) as mock_search:
         mock_search.side_effect = TimeoutError("Timeout")
         with pytest.raises(RuntimeError, match="timed out"):
           client.search()
@@ -784,7 +802,7 @@ class TestSyncIMAPClientErrorHandling:
     )
     client = SyncIMAPClient(account)
     try:
-      with patch.object(client._async_client, 'search', new_callable=AsyncMock) as mock_search:
+      with patch.object(client._async_client, "search", new_callable=AsyncMock) as mock_search:
         mock_search.side_effect = ConnectionError("Lost connection")
         with pytest.raises(RuntimeError, match="Connection error"):
           client.search()
@@ -805,7 +823,7 @@ class TestSyncIMAPClientErrorHandling:
     )
     client = SyncIMAPClient(account)
     try:
-      with patch.object(client._async_client, 'search', new_callable=AsyncMock) as mock_search:
+      with patch.object(client._async_client, "search", new_callable=AsyncMock) as mock_search:
         mock_search.side_effect = Exception("Unexpected error")
         with pytest.raises(RuntimeError, match="Operation failed"):
           client.search()
@@ -830,12 +848,12 @@ class TestSyncIMAPClientThreadSafety:
     )
     client = SyncIMAPClient(account)
     try:
-      with patch('asyncio.run_coroutine_threadsafe') as mock_run:
+      with patch("asyncio.run_coroutine_threadsafe") as mock_run:
         mock_future = MagicMock()
         mock_future.result.return_value = ["1", "2"]
         mock_run.return_value = mock_future
 
-        with patch.object(client._async_client, 'search', new_callable=AsyncMock) as mock_search:
+        with patch.object(client._async_client, "search", new_callable=AsyncMock) as mock_search:
           mock_search.return_value = ["1", "2"]
           client.search()
 
@@ -865,7 +883,7 @@ class TestSyncIMAPClientThreadSafety:
 
       def increment_call():
         nonlocal call_count
-        with patch.object(client._async_client, 'search', new_callable=AsyncMock) as mock_search:
+        with patch.object(client._async_client, "search", new_callable=AsyncMock) as mock_search:
           mock_search.return_value = ["1"]
           return client.search()
 
@@ -978,7 +996,7 @@ class TestSyncIMAPClientResourceCleanup:
     )
     client = SyncIMAPClient(account)
     try:
-      with patch.object(client._async_client, 'connect', new_callable=AsyncMock) as mock_connect:
+      with patch.object(client._async_client, "connect", new_callable=AsyncMock) as mock_connect:
         mock_connect.side_effect = Exception("Connect failed")
         with pytest.raises(RuntimeError):
           client.connect()
@@ -1010,6 +1028,7 @@ class TestSyncIMAPClientResourceCleanup:
 
     # Allow threads to fully terminate
     import time
+
     time.sleep(0.1)
 
     # Thread count should return to initial

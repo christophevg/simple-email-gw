@@ -34,6 +34,7 @@ IMAP_CRITERIA_PATTERN = re.compile(r"^[\w\s\(\)\*\<\>\[\]=!\"@\.:%\\-]+$")
 
 class SecurityError(Exception):
   """Raised when a security constraint is violated (e.g., symlink escape)."""
+
   pass
 
 
@@ -109,9 +110,7 @@ class IMAPClient:
         raise RuntimeError(f"Network error: {e}") from e
       except Exception as e:
         # Unexpected errors - preserve for debugging
-        raise RuntimeError(
-          f"An unexpected error occurred: {type(e).__name__}: {e}"
-        ) from e
+        raise RuntimeError(f"An unexpected error occurred: {type(e).__name__}: {e}") from e
 
       # Query and cache server capabilities
       try:
@@ -158,11 +157,14 @@ class IMAPClient:
         # Parse: (flags) "delimiter" "name"
         parts = item.split('"')
         if len(parts) >= 3:
-          folders.append({
-            "flags": parts[0].strip("() "),
-            "delimiter": parts[1],
-            "name": parts[3] if len(parts) > 3 else parts[1],
-          })
+          flags_str = parts[0].strip("() ")
+          folders.append(
+            {
+              "flags": flags_str.split() if flags_str else [],
+              "delimiter": parts[1],
+              "name": parts[3] if len(parts) > 3 else parts[1],
+            }
+          )
 
       return folders
 
@@ -181,7 +183,7 @@ class IMAPClient:
       # Parse EXISTS from response - data contains lines like b'2 EXISTS'
       count = 0
       for item in data:
-        if isinstance(item, bytes) and b'EXISTS' in item:
+        if isinstance(item, bytes) and b"EXISTS" in item:
           try:
             count = int(item.split()[0])
           except (ValueError, IndexError):
@@ -260,12 +262,17 @@ class IMAPClient:
       result = {"id": safe_message_id, "folder": safe_folder}
 
       raw_message = None
+      flags = {}
       for item in data:
         if isinstance(item, bytearray):
           raw_message = bytes(item)
         elif isinstance(item, tuple) and len(item) == 2:
           # Alternative format
           raw_message = item[1] if isinstance(item[1], (bytes, bytearray)) else None  # type: ignore[assignment]
+        elif b"FLAGS" in item:
+          # format: b' FLAGS (...)'
+          # TODO: extract more flags?
+          flags["Seen"] = b"\\Seen" in item
 
       if raw_message:
         msg = email.message_from_bytes(raw_message)
@@ -275,6 +282,7 @@ class IMAPClient:
         result["date"] = msg.get("Date", "")
         result["body"] = self._get_body(msg)
         result["attachments"] = self._list_attachments(msg)
+        result["read"] = flags.get("Seen", False)
 
       return result
 
@@ -389,7 +397,7 @@ class IMAPClient:
 
     # Sanitize filename - remove path separators and check for CRLF
     safe_filename = os.path.basename(filename)
-    if not safe_filename or safe_filename in ('.', '..'):
+    if not safe_filename or safe_filename in (".", ".."):
       raise ValueError("Invalid filename")
     # Additional CRLF check on the basename
     safe_filename = sanitize_fn(safe_filename)
@@ -446,9 +454,7 @@ class IMAPClient:
                       file_path.unlink()
                     except OSError:
                       pass
-                    raise SecurityError(
-                      "Download escaped workspace confinement"
-                    )
+                    raise SecurityError("Download escaped workspace confinement")
 
                   log_attachment_download(self.account.name, filename, real_path)
                   return str(real_path)

@@ -87,6 +87,7 @@ Features
    :caption: User Guide
 
    configuration
+   cli
    security
    mcp-tools
 

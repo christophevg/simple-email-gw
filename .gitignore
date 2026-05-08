@@ -57,6 +57,9 @@ coverage.xml
 .env
 .env.local
 
+# CLI history
+.email_gw_history
+
 # Documentation build
 docs/_build/
 
@@ -64,3 +67,5 @@ docs/_build/
 research/TODO.md
 analysis/
 test_sync_imports.py
+/reporting
+/research
