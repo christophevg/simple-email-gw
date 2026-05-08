@@ -61,4 +61,6 @@ coverage.xml
 docs/_build/
 
 # Research
-research/
+research/TODO.md
+analysis/
+test_sync_imports.py

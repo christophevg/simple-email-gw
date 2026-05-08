@@ -24,6 +24,8 @@ dependencies = [
   "aiosmtplib>=3.0.0",
   "pydantic>=2.0.0",
   "pydantic-settings>=2.0.0",
+  "rich>=13.0.0",
+  "prompt_toolkit>=3.0.0",
 ]
 
 [project.optional-dependencies]
@@ -45,6 +47,7 @@ docs = [
 
 [project.scripts]
 email-gw-mcp-server = "simple_email_gw.mcp:run"
+email-gw-cli = "simple_email_gw.cli.app:main"
 
 [build-system]
 requires = ["hatchling"]
