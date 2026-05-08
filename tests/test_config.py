@@ -79,22 +79,24 @@ class TestServerConfig:
 
   def test_json_env_vars(self, monkeypatch):
     """Test configuration from JSON environment variable."""
-    accounts_json = json.dumps([
-      {
-        "name": "work",
-        "imap_host": "imap.work.com",
-        "smtp_host": "smtp.work.com",
-        "username": "work@example.com",
-        "password": "secret1",
-      },
-      {
-        "name": "personal",
-        "imap_host": "imap.gmail.com",
-        "smtp_host": "smtp.gmail.com",
-        "username": "personal@gmail.com",
-        "password": "secret2",
-      },
-    ])
+    accounts_json = json.dumps(
+      [
+        {
+          "name": "work",
+          "imap_host": "imap.work.com",
+          "smtp_host": "smtp.work.com",
+          "username": "work@example.com",
+          "password": "secret1",
+        },
+        {
+          "name": "personal",
+          "imap_host": "imap.gmail.com",
+          "smtp_host": "smtp.gmail.com",
+          "username": "personal@gmail.com",
+          "password": "secret2",
+        },
+      ]
+    )
     monkeypatch.setenv("EMAIL_ACCOUNTS_JSON", accounts_json)
 
     config = ServerConfig()

@@ -17,6 +17,7 @@ if TYPE_CHECKING:
 
 class RateLimitError(RuntimeError):
   """Raised when a rate limit is exceeded."""
+
   pass
 
 

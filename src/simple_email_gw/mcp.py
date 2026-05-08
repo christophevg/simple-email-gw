@@ -189,7 +189,9 @@ async def send_email(
   cc: Annotated[list[str] | None, Field(default=None, description="CC addresses")] = None,
   bcc: Annotated[list[str] | None, Field(default=None, description="BCC addresses")] = None,
   html_body: Annotated[str | None, Field(default=None, description="HTML body")] = None,
-  attachments: Annotated[list[str] | None, Field(default=None, description="Attachment paths")] = None,
+  attachments: Annotated[
+    list[str] | None, Field(default=None, description="Attachment paths")
+  ] = None,
   ctx: Context | None = None,
 ) -> dict[str, str]:
   """Send a new email message.
@@ -242,7 +244,9 @@ async def reply_email(
   subject: Annotated[str, Field(description="Email subject")],
   body: Annotated[str, Field(description="Plain text body")],
   in_reply_to: Annotated[str, Field(description="Message-ID being replied to")],
-  references: Annotated[list[str] | None, Field(default=None, description="Thread references")] = None,
+  references: Annotated[
+    list[str] | None, Field(default=None, description="Thread references")
+  ] = None,
   html_body: Annotated[str | None, Field(default=None, description="HTML body")] = None,
   ctx: Context | None = None,
 ) -> dict[str, str]:

@@ -59,6 +59,10 @@ packages = ["src/simple_email_gw"]
 [tool.ruff]
 line-length = 100
 target-version = "py310"
+indent-width = 2
+
+[tool.ruff.format]
+indent-style = "space"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "N", "W", "UP"]

@@ -1,6 +1,5 @@
 """Tests for recipient whitelist."""
 
-
 from simple_email_gw.config import RecipientWhitelist
 
 

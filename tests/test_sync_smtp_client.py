@@ -166,8 +166,12 @@ class TestSyncSMTPClientSendEmail:
     )
     client = SyncSMTPClient(account)
     try:
-      with patch.object(client._async_client, 'send_email', new_callable=AsyncMock) as mock_send:
-        mock_send.return_value = {"status": "sent", "recipients": "test@example.com", "message": "OK"}
+      with patch.object(client._async_client, "send_email", new_callable=AsyncMock) as mock_send:
+        mock_send.return_value = {
+          "status": "sent",
+          "recipients": "test@example.com",
+          "message": "OK",
+        }
         result = client.send_email(["test@example.com"], "Test", "Hello")
         mock_send.assert_called_once_with(
           to=["test@example.com"],
@@ -178,7 +182,11 @@ class TestSyncSMTPClientSendEmail:
           html_body=None,
           attachments=None,
         )
-        assert result == {"status": "sent", "recipients": "test@example.com", "message": "OK"}
+        assert result == {
+          "status": "sent",
+          "recipients": "test@example.com",
+          "message": "OK",
+        }
     finally:
       client.__exit__(None, None, None)
 
@@ -196,8 +204,12 @@ class TestSyncSMTPClientSendEmail:
     )
     client = SyncSMTPClient(account)
     try:
-      with patch.object(client._async_client, 'send_email', new_callable=AsyncMock) as mock_send:
-        mock_send.return_value = {"status": "sent", "recipients": "test@example.com", "message": "OK"}
+      with patch.object(client._async_client, "send_email", new_callable=AsyncMock) as mock_send:
+        mock_send.return_value = {
+          "status": "sent",
+          "recipients": "test@example.com",
+          "message": "OK",
+        }
         result = client.send_email(["test@example.com"], "Test", "Hello")
         assert "status" in result
         assert "recipients" in result
@@ -219,8 +231,12 @@ class TestSyncSMTPClientSendEmail:
     )
     client = SyncSMTPClient(account)
     try:
-      with patch.object(client._async_client, 'send_email', new_callable=AsyncMock) as mock_send:
-        mock_send.return_value = {"status": "sent", "recipients": "test@example.com", "message": "OK"}
+      with patch.object(client._async_client, "send_email", new_callable=AsyncMock) as mock_send:
+        mock_send.return_value = {
+          "status": "sent",
+          "recipients": "test@example.com",
+          "message": "OK",
+        }
         client.send_email(
           to=["test@example.com"],
           subject="Test",
@@ -256,7 +272,7 @@ class TestSyncSMTPClientSendEmail:
     )
     client = SyncSMTPClient(account)
     try:
-      with patch.object(client._async_client, 'send_email', new_callable=AsyncMock) as mock_send:
+      with patch.object(client._async_client, "send_email", new_callable=AsyncMock) as mock_send:
         mock_send.side_effect = ValueError("Invalid email address")
         with pytest.raises(ValueError, match="Invalid email address"):
           client.send_email(["invalid-email"], "Test", "Hello")
@@ -277,7 +293,7 @@ class TestSyncSMTPClientSendEmail:
     )
     client = SyncSMTPClient(account)
     try:
-      with patch.object(client._async_client, 'send_email', new_callable=AsyncMock) as mock_send:
+      with patch.object(client._async_client, "send_email", new_callable=AsyncMock) as mock_send:
         mock_send.side_effect = WhitelistError("Recipients not in whitelist")
         with pytest.raises(WhitelistError, match="Recipients not in whitelist"):
           client.send_email(["blocked@example.com"], "Test", "Hello")
@@ -298,8 +314,12 @@ class TestSyncSMTPClientSendEmail:
     )
     client = SyncSMTPClient(account)
     try:
-      with patch.object(client._async_client, 'send_email', new_callable=AsyncMock) as mock_send:
-        mock_send.return_value = {"status": "sent", "recipients": "test@example.com", "message": "OK"}
+      with patch.object(client._async_client, "send_email", new_callable=AsyncMock) as mock_send:
+        mock_send.return_value = {
+          "status": "sent",
+          "recipients": "test@example.com",
+          "message": "OK",
+        }
         # Subject with CRLF should be sanitized by async client
         result = client.send_email(["test@example.com"], "Test\r\nBcc: bad@example.com", "Hello")
         assert result["status"] == "sent"
@@ -324,8 +344,12 @@ class TestSyncSMTPClientReplyEmail:
     )
     client = SyncSMTPClient(account)
     try:
-      with patch.object(client._async_client, 'reply_email', new_callable=AsyncMock) as mock_reply:
-        mock_reply.return_value = {"status": "sent", "recipients": "test@example.com", "message": "OK"}
+      with patch.object(client._async_client, "reply_email", new_callable=AsyncMock) as mock_reply:
+        mock_reply.return_value = {
+          "status": "sent",
+          "recipients": "test@example.com",
+          "message": "OK",
+        }
         result = client.reply_email(
           to="test@example.com",
           subject="Re: Test",
@@ -340,7 +364,11 @@ class TestSyncSMTPClientReplyEmail:
           references=None,
           html_body=None,
         )
-        assert result == {"status": "sent", "recipients": "test@example.com", "message": "OK"}
+        assert result == {
+          "status": "sent",
+          "recipients": "test@example.com",
+          "message": "OK",
+        }
     finally:
       client.__exit__(None, None, None)
 
@@ -358,8 +386,12 @@ class TestSyncSMTPClientReplyEmail:
     )
     client = SyncSMTPClient(account)
     try:
-      with patch.object(client._async_client, 'reply_email', new_callable=AsyncMock) as mock_reply:
-        mock_reply.return_value = {"status": "sent", "recipients": "test@example.com", "message": "OK"}
+      with patch.object(client._async_client, "reply_email", new_callable=AsyncMock) as mock_reply:
+        mock_reply.return_value = {
+          "status": "sent",
+          "recipients": "test@example.com",
+          "message": "OK",
+        }
         result = client.reply_email("test@example.com", "Re: Test", "Reply", "<msg123@test.com>")
         assert "status" in result
         assert "recipients" in result
@@ -381,8 +413,12 @@ class TestSyncSMTPClientReplyEmail:
     )
     client = SyncSMTPClient(account)
     try:
-      with patch.object(client._async_client, 'reply_email', new_callable=AsyncMock) as mock_reply:
-        mock_reply.return_value = {"status": "sent", "recipients": "test@example.com", "message": "OK"}
+      with patch.object(client._async_client, "reply_email", new_callable=AsyncMock) as mock_reply:
+        mock_reply.return_value = {
+          "status": "sent",
+          "recipients": "test@example.com",
+          "message": "OK",
+        }
         result = client.reply_email(
           to="test@example.com",
           subject="Re: Test",
@@ -409,8 +445,12 @@ class TestSyncSMTPClientReplyEmail:
     )
     client = SyncSMTPClient(account)
     try:
-      with patch.object(client._async_client, 'reply_email', new_callable=AsyncMock) as mock_reply:
-        mock_reply.return_value = {"status": "sent", "recipients": "test@example.com", "message": "OK"}
+      with patch.object(client._async_client, "reply_email", new_callable=AsyncMock) as mock_reply:
+        mock_reply.return_value = {
+          "status": "sent",
+          "recipients": "test@example.com",
+          "message": "OK",
+        }
         result = client.reply_email(
           to="test@example.com",
           subject="Re: Test",
@@ -437,7 +477,7 @@ class TestSyncSMTPClientReplyEmail:
     )
     client = SyncSMTPClient(account)
     try:
-      with patch.object(client._async_client, 'reply_email', new_callable=AsyncMock) as mock_reply:
+      with patch.object(client._async_client, "reply_email", new_callable=AsyncMock) as mock_reply:
         mock_reply.side_effect = ValueError("Invalid email address")
         with pytest.raises(ValueError, match="Invalid email address"):
           client.reply_email("invalid-email", "Re: Test", "Reply", "<msg123@test.com>")
@@ -462,8 +502,14 @@ class TestSyncSMTPClientForwardEmail:
     )
     client = SyncSMTPClient(account)
     try:
-      with patch.object(client._async_client, 'forward_email', new_callable=AsyncMock) as mock_forward:
-        mock_forward.return_value = {"status": "sent", "recipients": "test@example.com", "message": "OK"}
+      with patch.object(
+        client._async_client, "forward_email", new_callable=AsyncMock
+      ) as mock_forward:
+        mock_forward.return_value = {
+          "status": "sent",
+          "recipients": "test@example.com",
+          "message": "OK",
+        }
         result = client.forward_email(
           to=["test@example.com"],
           subject="Fwd: Test",
@@ -478,7 +524,11 @@ class TestSyncSMTPClientForwardEmail:
           original_date="2024-01-01",
           original_body="Original text",
         )
-        assert result == {"status": "sent", "recipients": "test@example.com", "message": "OK"}
+        assert result == {
+          "status": "sent",
+          "recipients": "test@example.com",
+          "message": "OK",
+        }
     finally:
       client.__exit__(None, None, None)
 
@@ -496,8 +546,14 @@ class TestSyncSMTPClientForwardEmail:
     )
     client = SyncSMTPClient(account)
     try:
-      with patch.object(client._async_client, 'forward_email', new_callable=AsyncMock) as mock_forward:
-        mock_forward.return_value = {"status": "sent", "recipients": "test@example.com", "message": "OK"}
+      with patch.object(
+        client._async_client, "forward_email", new_callable=AsyncMock
+      ) as mock_forward:
+        mock_forward.return_value = {
+          "status": "sent",
+          "recipients": "test@example.com",
+          "message": "OK",
+        }
         result = client.forward_email(
           ["test@example.com"],
           "Fwd: Test",
@@ -525,8 +581,14 @@ class TestSyncSMTPClientForwardEmail:
     )
     client = SyncSMTPClient(account)
     try:
-      with patch.object(client._async_client, 'forward_email', new_callable=AsyncMock) as mock_forward:
-        mock_forward.return_value = {"status": "sent", "recipients": "test@example.com", "message": "OK"}
+      with patch.object(
+        client._async_client, "forward_email", new_callable=AsyncMock
+      ) as mock_forward:
+        mock_forward.return_value = {
+          "status": "sent",
+          "recipients": "test@example.com",
+          "message": "OK",
+        }
         result = client.forward_email(
           ["test@example.com"],
           "Test",
@@ -556,7 +618,7 @@ class TestSyncSMTPClientErrorHandling:
     )
     client = SyncSMTPClient(account)
     try:
-      with patch.object(client._async_client, 'send_email', new_callable=AsyncMock) as mock_send:
+      with patch.object(client._async_client, "send_email", new_callable=AsyncMock) as mock_send:
         mock_send.side_effect = TimeoutError("Timeout")
         with pytest.raises(RuntimeError, match="timed out"):
           client.send_email(["test@example.com"], "Test", "Hello")
@@ -577,7 +639,7 @@ class TestSyncSMTPClientErrorHandling:
     )
     client = SyncSMTPClient(account)
     try:
-      with patch.object(client._async_client, 'send_email', new_callable=AsyncMock) as mock_send:
+      with patch.object(client._async_client, "send_email", new_callable=AsyncMock) as mock_send:
         mock_send.side_effect = ConnectionError("Connection lost")
         with pytest.raises(RuntimeError, match="Connection error"):
           client.send_email(["test@example.com"], "Test", "Hello")
@@ -598,7 +660,7 @@ class TestSyncSMTPClientErrorHandling:
     )
     client = SyncSMTPClient(account)
     try:
-      with patch.object(client._async_client, 'send_email', new_callable=AsyncMock) as mock_send:
+      with patch.object(client._async_client, "send_email", new_callable=AsyncMock) as mock_send:
         mock_send.side_effect = Exception("SMTP error")
         with pytest.raises(RuntimeError, match="Operation failed"):
           client.send_email(["test@example.com"], "Test", "Hello")
@@ -619,7 +681,7 @@ class TestSyncSMTPClientErrorHandling:
     )
     client = SyncSMTPClient(account)
     try:
-      with patch.object(client._async_client, 'send_email', new_callable=AsyncMock) as mock_send:
+      with patch.object(client._async_client, "send_email", new_callable=AsyncMock) as mock_send:
         mock_send.side_effect = Exception("Unexpected error")
         with pytest.raises(RuntimeError, match="Operation failed"):
           client.send_email(["test@example.com"], "Test", "Hello")
@@ -640,7 +702,7 @@ class TestSyncSMTPClientErrorHandling:
     )
     client = SyncSMTPClient(account)
     try:
-      with patch.object(client._async_client, 'send_email', new_callable=AsyncMock) as mock_send:
+      with patch.object(client._async_client, "send_email", new_callable=AsyncMock) as mock_send:
         mock_send.side_effect = ValueError("Invalid email address")
         with pytest.raises(ValueError, match="Invalid email address"):
           client.send_email(["invalid-email"], "Test", "Hello")
@@ -661,7 +723,7 @@ class TestSyncSMTPClientErrorHandling:
     )
     client = SyncSMTPClient(account)
     try:
-      with patch.object(client._async_client, 'send_email', new_callable=AsyncMock) as mock_send:
+      with patch.object(client._async_client, "send_email", new_callable=AsyncMock) as mock_send:
         mock_send.side_effect = WhitelistError("Recipients not in whitelist")
         with pytest.raises(WhitelistError, match="Recipients not in whitelist"):
           client.send_email(["blocked@example.com"], "Test", "Hello")
@@ -686,13 +748,21 @@ class TestSyncSMTPClientThreadSafety:
     )
     client = SyncSMTPClient(account)
     try:
-      with patch('asyncio.run_coroutine_threadsafe') as mock_run:
+      with patch("asyncio.run_coroutine_threadsafe") as mock_run:
         mock_future = MagicMock()
-        mock_future.result.return_value = {"status": "sent", "recipients": "test@example.com", "message": "OK"}
+        mock_future.result.return_value = {
+          "status": "sent",
+          "recipients": "test@example.com",
+          "message": "OK",
+        }
         mock_run.return_value = mock_future
 
-        with patch.object(client._async_client, 'send_email', new_callable=AsyncMock) as mock_send:
-          mock_send.return_value = {"status": "sent", "recipients": "test@example.com", "message": "OK"}
+        with patch.object(client._async_client, "send_email", new_callable=AsyncMock) as mock_send:
+          mock_send.return_value = {
+            "status": "sent",
+            "recipients": "test@example.com",
+            "message": "OK",
+          }
           client.send_email(["test@example.com"], "Test", "Hello")
 
           # Verify run_coroutine_threadsafe was called
@@ -718,8 +788,12 @@ class TestSyncSMTPClientThreadSafety:
     try:
 
       def send_email():
-        with patch.object(client._async_client, 'send_email', new_callable=AsyncMock) as mock_send:
-          mock_send.return_value = {"status": "sent", "recipients": "test@example.com", "message": "OK"}
+        with patch.object(client._async_client, "send_email", new_callable=AsyncMock) as mock_send:
+          mock_send.return_value = {
+            "status": "sent",
+            "recipients": "test@example.com",
+            "message": "OK",
+          }
           return client.send_email(["test@example.com"], "Test", "Hello")
 
       # Run multiple operations concurrently
@@ -832,7 +906,7 @@ class TestSyncSMTPClientResourceCleanup:
     )
     client = SyncSMTPClient(account)
     try:
-      with patch.object(client._async_client, 'send_email', new_callable=AsyncMock) as mock_send:
+      with patch.object(client._async_client, "send_email", new_callable=AsyncMock) as mock_send:
         # First call fails
         mock_send.side_effect = Exception("Send failed")
         with pytest.raises(RuntimeError):
@@ -866,6 +940,7 @@ class TestSyncSMTPClientResourceCleanup:
 
     # Allow threads to fully terminate
     import time
+
     time.sleep(0.1)
 
     # Thread count should return to initial
@@ -890,8 +965,12 @@ class TestSyncSMTPClientIntegration:
     )
     client = SyncSMTPClient(account)
     try:
-      with patch.object(client._async_client, 'send_email', new_callable=AsyncMock) as mock_send:
-        mock_send.return_value = {"status": "sent", "recipients": "test@example.com", "message": "OK"}
+      with patch.object(client._async_client, "send_email", new_callable=AsyncMock) as mock_send:
+        mock_send.return_value = {
+          "status": "sent",
+          "recipients": "test@example.com",
+          "message": "OK",
+        }
         result = client.send_email(
           to=["recipient@example.com"],
           subject="Test Subject",
@@ -916,8 +995,12 @@ class TestSyncSMTPClientIntegration:
     )
     client = SyncSMTPClient(account)
     try:
-      with patch.object(client._async_client, 'send_email', new_callable=AsyncMock) as mock_send:
-        mock_send.return_value = {"status": "sent", "recipients": "test@example.com", "message": "OK"}
+      with patch.object(client._async_client, "send_email", new_callable=AsyncMock) as mock_send:
+        mock_send.return_value = {
+          "status": "sent",
+          "recipients": "test@example.com",
+          "message": "OK",
+        }
 
         # Send multiple emails
         for i in range(5):

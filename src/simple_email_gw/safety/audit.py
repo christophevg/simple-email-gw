@@ -14,9 +14,7 @@ audit_logger.setLevel(logging.INFO)
 # Add handler if not present
 if not audit_logger.handlers:
   handler = logging.StreamHandler()
-  handler.setFormatter(
-    logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
-  )
+  handler.setFormatter(logging.Formatter("%(asctime)s - %(levelname)s - %(message)s"))
   audit_logger.addHandler(handler)
 
 

@@ -30,9 +30,7 @@ class RateLimiter:
     async with self._lock:
       now = time.monotonic()
       # Remove requests outside the window
-      self._requests[key] = [
-        t for t in self._requests[key] if now - t < self.window
-      ]
+      self._requests[key] = [t for t in self._requests[key] if now - t < self.window]
 
       if len(self._requests[key]) >= self.rate:
         return False

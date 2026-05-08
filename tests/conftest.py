@@ -83,6 +83,7 @@ def mock_smtp_client():
 def reset_connection_pool():
   """Reset connection pool between tests."""
   from simple_email_gw.connections import pool as pool_module
+
   pool_module._pool = None
   yield
   pool_module._pool = None

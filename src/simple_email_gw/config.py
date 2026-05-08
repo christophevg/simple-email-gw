@@ -18,6 +18,7 @@ def _load_dotenv() -> None:
   if env_file.exists():
     try:
       from dotenv import load_dotenv
+
       load_dotenv(env_file)
     except ImportError:
       # python-dotenv not installed, read manually
@@ -58,7 +59,9 @@ class EmailAccount(BaseModel):
 class RateLimitConfig(BaseModel):
   """Rate limiting configuration."""
 
-  imap_requests_per_minute: int = Field(default=60, description="IMAP requests per minute per account")
+  imap_requests_per_minute: int = Field(
+    default=60, description="IMAP requests per minute per account"
+  )
   smtp_sends_per_hour: int = Field(default=100, description="SMTP sends per hour per account")
 
 
@@ -132,9 +135,7 @@ class ServerConfig(BaseSettings):
   rate_limits: RateLimitConfig = Field(default_factory=RateLimitConfig)
 
   # Recipient whitelist
-  recipient_whitelist_json: str | None = Field(
-    default=None, description="JSON whitelist config"
-  )
+  recipient_whitelist_json: str | None = Field(default=None, description="JSON whitelist config")
   recipient_whitelist_domains: str | None = Field(
     default=None, description="Comma-separated allowed domains"
   )

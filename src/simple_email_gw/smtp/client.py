@@ -52,6 +52,7 @@ def validate_email(address: str) -> str:
 
 class WhitelistError(Exception):
   """Raised when recipient is not in whitelist."""
+
   pass
 
 
@@ -115,9 +116,7 @@ class SMTPClient:
     allowed, blocked = whitelist.filter_recipients(all_recipients)
 
     if blocked:
-      raise WhitelistError(
-        f"Recipients not in whitelist: {', '.join(blocked)}"
-      )
+      raise WhitelistError(f"Recipients not in whitelist: {', '.join(blocked)}")
 
     # Create message
     if html_body or attachments:
