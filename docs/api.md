@@ -2,7 +2,19 @@
 
 This document describes the public API for simple-email-gw.
 
-> **Note:** All APIs are **async-only**. You must use `asyncio.run()` or call methods from async contexts.
+> **Note:** This package provides **both async and sync APIs**. Use async clients (IMAPClient, SMTPClient) for async applications, or sync wrapper clients (SyncIMAPClient, SyncSMTPClient) for simpler synchronous code. See [Sync Client API Reference](sync-clients) for sync client documentation.
+
+## Choosing Async or Sync
+
+**Async clients** (recommended for async applications):
+- FastAPI, Quart, asyncio-based applications
+- Better performance in async contexts
+- No thread overhead
+
+**Sync clients** (for simpler synchronous code):
+- Scripts, CLI tools, synchronous applications
+- Simpler syntax (no async/await)
+- Context manager support (`with` statement)
 
 ## Installation
 
@@ -10,7 +22,6 @@ This document describes the public API for simple-email-gw.
 
 - Python 3.10 or higher
 - An email account (IMAP/SMTP access)
-- **Async runtime** - All APIs require async/await
 
 ### Install from PyPI
 

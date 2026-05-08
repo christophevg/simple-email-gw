@@ -4,22 +4,39 @@
 
 - Python 3.10 or higher
 - An email account (IMAP/SMTP access)
-- **Async runtime** - All APIs are async and require `asyncio`
 
-## Async-Only API
+## Choosing Async or Sync
 
-This package provides **async-only** APIs. All client methods must be called in async contexts:
+This package provides **both async and sync APIs**:
+
+- **Async clients** (IMAPClient, SMTPClient): For async applications (FastAPI, Quart, asyncio)
+- **Sync clients** (SyncIMAPClient, SyncSMTPClient): For simpler synchronous code (scripts, CLI tools)
+
+### Async Usage
 
 ```python
 import asyncio
-from simple_email_gw import IMAPClient
+from simple_email_gw import IMAPClient, EmailAccount
 
 async def main():
+    account = EmailAccount(name="work", imap_host="imap.gmail.com", ...)
     async with IMAPClient(account) as client:
         messages = await client.search(folder="INBOX")
 
 asyncio.run(main())
 ```
+
+### Sync Usage
+
+```python
+from simple_email_gw import SyncIMAPClient, EmailAccount
+
+account = EmailAccount(name="work", imap_host="imap.gmail.com", ...)
+with SyncIMAPClient(account) as client:
+    messages = client.search(folder="INBOX")
+```
+
+See [Sync Client API Reference](sync-clients) for complete sync client documentation.
 
 ## Install from PyPI
 

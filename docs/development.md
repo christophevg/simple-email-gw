@@ -2,7 +2,7 @@
 
 This document provides information for developers contributing to simple-email-gw.
 
-> **Note:** This package provides **async-only** APIs. All client methods are async and require `asyncio`.
+> **Note:** This package provides **both async and sync APIs**. Async clients (IMAPClient, SMTPClient) are the primary implementation. Sync wrapper clients (SyncIMAPClient, SyncSMTPClient) delegate to async clients using dedicated event loops.
 
 ## Prerequisites
 
