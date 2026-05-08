@@ -11,6 +11,7 @@ server for AI assistant integration.
    :caption: Getting Started
 
    installation
+   rationale
    api
 
 .. toctree::

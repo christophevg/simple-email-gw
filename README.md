@@ -7,10 +7,15 @@
 [![Code style: ruff](https://img.shields.io/badge/code%20style-ruff-blue.svg)](https://github.com/astral-sh/ruff)
 [![Type checked: mypy](https://img.shields.io/badge/type%20checked-mypy-blue.svg)](https://mypy.readthedocs.io/)
 [![Read the Docs](https://img.shields.io/readthedocs/simple-email-gw.svg)](https://simple-email-gw.readthedocs.io/)
+[![Agentic](https://img.shields.io/badge/workflow-agentic-blueviolet?style=flat-square)](https://christophe.vg/about/Coding-Agent)
 
 A simple email gateway with IMAP/SMTP clients, connection pooling, and MCP server for AI assistant integration.
 
 > **Note:** This package provides **async-only** APIs. All client methods are async and must be used with `asyncio.run()` or in async contexts.
+
+## Rationale
+
+This project was built using an agentic workflow — agents created the implementation from architectural requirements. For the full story, see [Rationale](docs/rationale.md).
 
 ## Features
 
