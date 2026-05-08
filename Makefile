@@ -1,3 +1,4 @@
+MODEL = kimi-k2.6:cloud
 -include ~/.claude/Makefile
 
 # Makefile for simple-email-gw
