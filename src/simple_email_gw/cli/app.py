@@ -549,7 +549,9 @@ class EmailCLI:
       display_error(self.console, f"Unexpected error: {e}", "Please try again or check logs")
 
   async def _cmd_show(self, args: list[str]) -> None:
-    """Show email (placeholder)."""
+    """Show email details."""
+    from simple_email_gw.cli.display import display_email
+
     if not self.session.current_account:
       display_error(
         self.console,
@@ -558,11 +560,49 @@ class EmailCLI:
       )
       return
 
-    display_error(
-      self.console,
-      "Command not implemented yet",
-      "This command will be implemented in a future task",
-    )
+    if not args:
+      display_error(
+        self.console,
+        "Usage: show <message_id>",
+        "Provide a message ID to display",
+      )
+      return
+
+    message_id = args[0]
+
+    # Validate message ID is numeric
+    if not message_id.isdigit():
+      display_error(
+        self.console,
+        "Message ID must be a number. Use 'ls' to see available IDs.",
+      )
+      return
+
+    # Check cache first
+    cached = self.session.get_cached_email(message_id)
+    if cached is not None:
+      self.console.print("[dim]From cache[/dim]")
+      display_email(self.console, cached)
+      return
+
+    try:
+      client = await self.session.get_imap_client()
+
+      with self.console.status("[bold green]Fetching message...[/bold green]"):
+        message = await client.fetch_message(message_id, folder=self.session.current_folder)
+
+      self.session.cache_email(message_id, message)
+      display_email(self.console, message)
+    except KeyboardInterrupt:
+      self.console.print("\n[dim]Fetch cancelled.[/dim]")
+    except (ConnectionError, TimeoutError) as e:
+      display_error(self.console, f"Connection failed: {e}", "Check your network and try again")
+    except RateLimitError as e:
+      display_error(self.console, f"Rate limit exceeded: {e}", "Please wait before trying again")
+    except RuntimeError as e:
+      display_error(self.console, f"IMAP error: {e}", "Check the message ID and try again")
+    except Exception as e:
+      display_error(self.console, f"Unexpected error: {e}", "Please try again or check logs")
 
   async def _cmd_write(self, args: list[str]) -> None:
     """Write email (placeholder)."""

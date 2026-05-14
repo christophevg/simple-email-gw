@@ -12,6 +12,7 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.syntax import Syntax
 from rich.table import Table
+from rich.text import Text
 
 from simple_email_gw.cli.theme import get_theme_manager
 
@@ -169,13 +170,14 @@ def display_email(console: Console, email: dict[str, Any]) -> None:
 
   # Create panel for headers
   header_panel = Panel(
-    syntax, title=f"[{theme.email_id}]Email #{msg_id}[/{theme.email_id}]", style="white"
+    syntax, title=f"[{theme.email_id}]Email #{msg_id}[/{theme.email_id}]", style=theme.secondary
   )
 
   console.print(header_panel)
 
-  # Display body
-  console.print(f"\n{body}")
+  # Display body with pager and markup-safe printing
+  with console.pager():
+    console.print(Text(body or ""))
 
   # Display attachments if present
   if attachments:

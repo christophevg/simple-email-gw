@@ -688,3 +688,335 @@ async def test_ls_read_status_fallback_when_missing_read_key(
   messages = mock_display_emails.call_args[0][1]
   assert len(messages) == 1
   assert messages[0]["read"] is False
+
+
+# --- Show Command Tests ---
+
+
+@patch("simple_email_gw.cli.display.display_email")
+async def test_show_happy_path_cached_email(mock_display_email, cli, mock_session, mock_imap_client):
+  """
+  Given: An account is selected and the message is cached in session
+  When: The 'show <message_id>' command is executed
+  Then: The cached message should be displayed without fetching from IMAP
+  """
+  # Setup
+  mock_session.current_account = MagicMock(name="test-account")
+  mock_session.current_folder = "INBOX"
+  cached_message = {
+    "id": "1",
+    "from": "alice@example.com",
+    "to": "me@example.com",
+    "subject": "Hello",
+    "date": "2026-05-08",
+    "body": "Hello world",
+  }
+  mock_session.get_cached_email.return_value = cached_message
+
+  await cli._cmd_show(["1"])
+
+  # Verify cache checked
+  mock_session.get_cached_email.assert_called_once_with("1")
+  # Verify display called with cached message
+  mock_display_email.assert_called_once_with(cli.console, cached_message)
+  # Verify fetch was NOT called
+  mock_imap_client.fetch_message.assert_not_called()
+  # Verify get_imap_client was NOT called for cached messages
+  mock_session.get_imap_client.assert_not_called()
+
+
+@patch("simple_email_gw.cli.display.display_email")
+async def test_show_happy_path_fetch_not_cached(mock_display_email, cli, mock_session, mock_imap_client):
+  """
+  Given: An account is selected and the message is not cached
+  When: The 'show <message_id>' command is executed
+  Then: The message should be fetched from IMAP and displayed
+  """
+  # Setup
+  mock_session.current_account = MagicMock(name="test-account")
+  mock_session.current_folder = "INBOX"
+  mock_session.get_imap_client.return_value = mock_imap_client
+  mock_session.get_cached_email.return_value = None
+  fetched_message = {
+    "id": "1",
+    "from": "alice@example.com",
+    "to": "me@example.com",
+    "subject": "Hello",
+    "date": "2026-05-08",
+    "body": "Hello world",
+  }
+  mock_imap_client.fetch_message = AsyncMock(return_value=fetched_message)
+
+  await cli._cmd_show(["1"])
+
+  # Verify cache checked
+  mock_session.get_cached_email.assert_called_once_with("1")
+  # Verify fetch called with correct args
+  mock_imap_client.fetch_message.assert_awaited_once_with("1", folder="INBOX")
+  # Verify message cached after fetch
+  mock_session.cache_email.assert_called_once_with("1", fetched_message)
+  # Verify display called with fetched message
+  mock_display_email.assert_called_once_with(cli.console, fetched_message)
+
+
+@patch("simple_email_gw.cli.app.display_error")
+async def test_show_error_no_account_selected(mock_display_error, cli, mock_session):
+  """
+  Given: No account is selected
+  When: The 'show <message_id>' command is executed
+  Then: An error message should be displayed suggesting the 'use' command
+  """
+  # Setup
+  mock_session.current_account = None
+
+  await cli._cmd_show(["1"])
+
+  mock_display_error.assert_called_once_with(
+    cli.console, "No account selected", "Use 'use <account>' to select an account first"
+  )
+
+
+@patch("simple_email_gw.cli.app.display_error")
+async def test_show_error_message_id_missing(mock_display_error, cli, mock_session):
+  """
+  Given: An account is selected but no message_id is provided
+  When: The 'show' command is executed without arguments
+  Then: An error message should be displayed with usage information
+  """
+  # Setup
+  mock_session.current_account = MagicMock(name="test-account")
+
+  await cli._cmd_show([])
+
+  mock_display_error.assert_called_once()
+  args, _ = mock_display_error.call_args
+  assert "message_id" in args[1].lower() or "usage" in args[1].lower()
+
+
+@patch("simple_email_gw.cli.app.display_error")
+async def test_show_error_fetch_fails(mock_display_error, cli, mock_session, mock_imap_client):
+  """
+  Given: An account is selected and the message is not cached
+  When: The IMAP fetch raises an error
+  Then: An error message should be displayed with an actionable suggestion
+  """
+  # Setup
+  mock_session.current_account = MagicMock(name="test-account")
+  mock_session.current_folder = "INBOX"
+  mock_session.get_imap_client.return_value = mock_imap_client
+  mock_session.get_cached_email.return_value = None
+  mock_imap_client.fetch_message = AsyncMock(side_effect=RuntimeError("Message not found"))
+
+  await cli._cmd_show(["1"])
+
+  mock_display_error.assert_called_once()
+  args, _ = mock_display_error.call_args
+  assert "IMAP error" in args[1]
+  assert "message id" in args[2].lower()
+
+
+@patch("simple_email_gw.cli.app.display_error")
+async def test_show_invalid_message_id_shows_error(mock_display_error, cli, mock_session):
+  """
+  Given: An account is selected but message_id is non-numeric
+  When: The 'show abc' command is executed
+  Then: An error panel should be displayed indicating message ID must be a number
+  """
+  mock_session.current_account = MagicMock(name="test-account")
+
+  await cli._cmd_show(["abc"])
+
+  mock_display_error.assert_called_once()
+  args, _ = mock_display_error.call_args
+  assert "number" in args[1].lower()
+  assert "ls" in args[1].lower()
+
+
+@patch("simple_email_gw.cli.display.display_email")
+async def test_show_spinner_shown_on_cache_miss(mock_display_email, cli, mock_session, mock_imap_client):
+  """
+  Given: An account is selected and the message is not cached
+  When: The 'show <message_id>' command is executed
+  Then: A spinner with 'Fetching message...' should be shown during IMAP fetch
+  """
+  mock_session.current_account = MagicMock(name="test-account")
+  mock_session.current_folder = "INBOX"
+  mock_session.get_imap_client.return_value = mock_imap_client
+  mock_session.get_cached_email.return_value = None
+  fetched_message = {
+    "id": "1",
+    "from": "alice@example.com",
+    "to": "me@example.com",
+    "subject": "Hello",
+    "date": "2026-05-08",
+    "body": "Hello world",
+  }
+  mock_imap_client.fetch_message = AsyncMock(return_value=fetched_message)
+
+  with patch.object(cli.console, "status") as mock_status:
+    await cli._cmd_show(["1"])
+
+    mock_status.assert_called_once_with("[bold green]Fetching message...[/bold green]")
+
+
+@patch("simple_email_gw.cli.app.display_error")
+async def test_show_connection_error_shows_connection_failed(
+  mock_display_error, cli, mock_session, mock_imap_client
+):
+  """
+  Given: An account is selected and the message is not cached
+  When: The IMAP fetch raises ConnectionError
+  Then: An error panel should be displayed with a connection-failed message
+  """
+  mock_session.current_account = MagicMock(name="test-account")
+  mock_session.current_folder = "INBOX"
+  mock_session.get_imap_client.return_value = mock_imap_client
+  mock_session.get_cached_email.return_value = None
+  mock_imap_client.fetch_message = AsyncMock(side_effect=ConnectionError("Network unreachable"))
+
+  await cli._cmd_show(["1"])
+
+  mock_display_error.assert_called_once()
+  args, _ = mock_display_error.call_args
+  assert "Connection failed" in args[1]
+  assert "network" in args[2].lower()
+
+
+@patch("simple_email_gw.cli.app.display_error")
+async def test_show_timeout_error_shows_connection_failed(
+  mock_display_error, cli, mock_session, mock_imap_client
+):
+  """
+  Given: An account is selected and the message is not cached
+  When: The IMAP fetch raises TimeoutError
+  Then: An error panel should be displayed with a connection-failed message
+  """
+  mock_session.current_account = MagicMock(name="test-account")
+  mock_session.current_folder = "INBOX"
+  mock_session.get_imap_client.return_value = mock_imap_client
+  mock_session.get_cached_email.return_value = None
+  mock_imap_client.fetch_message = AsyncMock(side_effect=TimeoutError("Server did not respond"))
+
+  await cli._cmd_show(["1"])
+
+  mock_display_error.assert_called_once()
+  args, _ = mock_display_error.call_args
+  assert "Connection failed" in args[1]
+  assert "network" in args[2].lower()
+
+
+@patch("simple_email_gw.cli.app.display_error")
+async def test_show_rate_limit_error_shows_rate_limit_exceeded(
+  mock_display_error, cli, mock_session, mock_imap_client
+):
+  """
+  Given: An account is selected and the message is not cached
+  When: The IMAP fetch raises RateLimitError
+  Then: An error panel should be displayed with a rate-limit-exceeded message
+  """
+  mock_session.current_account = MagicMock(name="test-account")
+  mock_session.current_folder = "INBOX"
+  mock_session.get_imap_client.return_value = mock_imap_client
+  mock_session.get_cached_email.return_value = None
+  mock_imap_client.fetch_message = AsyncMock(side_effect=RateLimitError("Too many requests"))
+
+  await cli._cmd_show(["1"])
+
+  mock_display_error.assert_called_once()
+  args, _ = mock_display_error.call_args
+  assert "Rate limit exceeded: Too many requests" in args[1]
+  assert "wait" in args[2].lower()
+
+
+@patch("simple_email_gw.cli.display.display_email")
+async def test_show_keyboard_interrupt_shows_cancelled_message(
+  mock_display_email, cli, mock_session, mock_imap_client
+):
+  """
+  Given: An account is selected and the message is not cached
+  When: The user presses Ctrl+C during the IMAP fetch
+  Then: A 'Fetch cancelled.' message should be printed and the command should return gracefully
+  """
+  mock_session.current_account = MagicMock(name="test-account")
+  mock_session.current_folder = "INBOX"
+  mock_session.get_imap_client.return_value = mock_imap_client
+  mock_session.get_cached_email.return_value = None
+  mock_imap_client.fetch_message = AsyncMock(side_effect=KeyboardInterrupt)
+
+  await cli._cmd_show(["1"])
+
+  mock_display_email.assert_not_called()
+
+
+@patch("simple_email_gw.cli.display.display_email")
+async def test_show_stale_cache_after_folder_change(mock_display_email, cli, mock_session, mock_imap_client):
+  """
+  Given: A message was cached in INBOX and folder was changed to Sent
+  When: The 'show' command is executed for the same message ID in the new folder
+  Then: get_cached_email returns None and a fresh fetch is performed for the new folder
+  """
+  mock_session.current_account = MagicMock(name="test-account")
+  mock_session.current_folder = "Sent"
+  mock_session.get_imap_client.return_value = mock_imap_client
+  # Simulate stale cache: get_cached_email returns None after folder change
+  mock_session.get_cached_email.return_value = None
+  fetched_message = {
+    "id": "1",
+    "from": "alice@example.com",
+    "to": "me@example.com",
+    "subject": "Hello",
+    "date": "2026-05-08",
+    "body": "Hello world",
+  }
+  mock_imap_client.fetch_message = AsyncMock(return_value=fetched_message)
+
+  await cli._cmd_show(["1"])
+
+  mock_session.get_cached_email.assert_called_once_with("1")
+  mock_imap_client.fetch_message.assert_awaited_once_with("1", folder="Sent")
+  mock_display_email.assert_called_once_with(cli.console, fetched_message)
+
+
+@patch("simple_email_gw.cli.display.display_email")
+async def test_show_cache_hit_avoids_fetch(mock_display_email, cli, mock_session, mock_imap_client):
+  """
+  Given: An account is selected and a message was previously fetched
+  When: The 'show' command is executed for the same message twice
+  Then: The first call should fetch and display; the second call should use cache and skip fetch
+  """
+  # Setup
+  mock_session.current_account = MagicMock(name="test-account")
+  mock_session.current_folder = "INBOX"
+  mock_session.get_imap_client.return_value = mock_imap_client
+  fetched_message = {
+    "id": "1",
+    "from": "alice@example.com",
+    "to": "me@example.com",
+    "subject": "Hello",
+    "date": "2026-05-08",
+    "body": "Hello world",
+  }
+  mock_session.get_cached_email.return_value = None
+  mock_imap_client.fetch_message = AsyncMock(return_value=fetched_message)
+
+  # First call - cache miss
+  await cli._cmd_show(["1"])
+
+  mock_imap_client.fetch_message.assert_awaited_once()
+  mock_display_email.assert_called_once_with(cli.console, fetched_message)
+
+  # Reset mocks for second call
+  mock_display_email.reset_mock()
+  mock_imap_client.fetch_message.reset_mock()
+  mock_session.get_imap_client.reset_mock()
+  mock_session.get_cached_email.reset_mock()
+
+  # Second call - cache hit
+  mock_session.get_cached_email.return_value = fetched_message
+
+  await cli._cmd_show(["1"])
+
+  mock_session.get_cached_email.assert_called_once_with("1")
+  mock_imap_client.fetch_message.assert_not_called()
+  mock_session.get_imap_client.assert_not_called()
+  mock_display_email.assert_called_once_with(cli.console, fetched_message)

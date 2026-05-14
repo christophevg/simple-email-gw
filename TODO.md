@@ -178,7 +178,7 @@
 
 ### Phase 3: Email Listing & Viewing Commands
 
-- [ ] **3.1: Implement ls command**
+- [x] **3.1: Implement ls command**
   - Location: `src/simple_email_gw/cli/commands.py` and `src/simple_email_gw/cli/display.py`
   - UX Design: See `analysis/ux-ls-command.md`
   - Function: `async cmd_ls(cli: EmailCLI, limit: int = 50)`
@@ -205,8 +205,8 @@
     - Ctrl+C during fetch: cancel gracefully, stop spinner, return to prompt
   - Requires: Theme update for `unread_indicator` color
 
-- [ ] **3.2: Implement show command**
-  - Location: `src/simple_email_gw/cli/commands.py`
+- [x] **3.2: Implement show command**
+  - Location: `src/simple_email_gw/cli/app.py`
   - Function: `async cmd_show(cli: EmailCLI, message_id: str)`
   - Behavior:
     - Check session has active account
@@ -225,8 +225,9 @@
     - Invalid message ID: display error with suggestion to use `ls`
     - No account selected: display error
     - Fetch error: display error
+  - **Note**: `display_email()` already implemented in `display.py` with tests. Need to wire up `_cmd_show()` in `app.py`.
 
-- [ ] **3.3: Implement email caching**
+- [x] **3.3: Implement email caching**
   - Location: `src/simple_email_gw/cli/session.py`
   - Add to `Session` class:
     - `_email_cache: dict[str, dict]` - Cache of fetched emails by ID

@@ -1,6 +1,7 @@
 # simple-email-gw
 
 [![PyPI version](https://img.shields.io/pypi/v/simple-email-gw.svg)](https://pypi.org/project/simple-email-gw/)
+[![PyPI downloads](https://img.shields.io/pypi/dm/simple-email-gw.svg)](https://pypistats.org/packages/simple-email-gw)
 [![Python versions](https://img.shields.io/pypi/pyversions/simple-email-gw.svg)](https://pypi.org/project/simple-email-gw/)
 [![License](https://img.shields.io/github/license/christophevg/simple-email-gw.svg)](https://github.com/christophevg/simple-email-gw/blob/main/LICENSE)
 [![CI](https://github.com/christophevg/simple-email-gw/actions/workflows/ci.yml/badge.svg)](https://github.com/christophevg/simple-email-gw/actions/workflows/ci.yml)
