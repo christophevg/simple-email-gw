@@ -5,8 +5,10 @@ These tests verify the Rich-based display functions that format various
 types of content for CLI output, including tables, panels, and styled messages.
 """
 
+import asyncio
 from unittest.mock import patch
 
+import pytest
 from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
@@ -20,9 +22,11 @@ from simple_email_gw.cli.display import (
   display_folders,
   display_success,
   display_warning,
+  EmailDraft,
   get_body_input,
   get_recipients_input,
 )
+from simple_email_gw.smtp.client import WhitelistError
 
 
 class TestDisplayAccounts:
@@ -1383,7 +1387,8 @@ class TestDisplayUtilitiesIntegration:
 class TestInteractiveInput:
   """Tests for interactive input functions."""
 
-  def test_get_recipients_input_single_recipient(self):
+  @pytest.mark.asyncio
+  async def test_get_recipients_input_single_recipient(self):
     """
     Given: User input with single recipient
     When: get_recipients_input is called
@@ -1392,10 +1397,11 @@ class TestInteractiveInput:
     console = Console()
 
     with patch("builtins.input", return_value="user@example.com"):
-      result = get_recipients_input(console, "Enter recipient")
+      result = await get_recipients_input(console, "Enter recipient")
       assert result == ["user@example.com"]
 
-  def test_get_recipients_input_multiple_recipients(self):
+  @pytest.mark.asyncio
+  async def test_get_recipients_input_multiple_recipients(self):
     """
     Given: User input with multiple recipients
     When: get_recipients_input is called
@@ -1406,10 +1412,11 @@ class TestInteractiveInput:
     with patch(
       "builtins.input", return_value="user1@example.com, user2@example.com, user3@example.com"
     ):
-      result = get_recipients_input(console, "Enter recipients")
+      result = await get_recipients_input(console, "Enter recipients")
       assert result == ["user1@example.com", "user2@example.com", "user3@example.com"]
 
-  def test_get_body_input_multiline(self):
+  @pytest.mark.asyncio
+  async def test_get_body_input_multiline(self):
     """
     Given: Multi-line body input
     When: get_body_input is called
@@ -1418,31 +1425,343 @@ class TestInteractiveInput:
     console = Console()
 
     with patch("builtins.input", side_effect=["Line 1", "Line 2", "Line 3", EOFError()]):
-      result = get_body_input(console, "Enter body")
+      result = await get_body_input(console, "Enter body")
       assert result == "Line 1\nLine 2\nLine 3"
 
-  def test_confirm_send_confirmed(self):
+  @pytest.mark.asyncio
+  async def test_confirm_send_confirmed(self):
     """
     Given: User confirms sending
     When: confirm_send is called
     Then: Returns True
     """
     console = Console()
-    preview = {"to": ["recipient@example.com"], "subject": "Test", "body": "Body"}
+    draft = EmailDraft(to=["recipient@example.com"], subject="Test", body="Body")
 
     with patch("builtins.input", return_value="y"):
-      result = confirm_send(console, preview)
+      result = await confirm_send(console, draft)
       assert result is True
 
-  def test_confirm_send_declined(self):
+  @pytest.mark.asyncio
+  async def test_confirm_send_declined(self):
     """
     Given: User declines sending
     When: confirm_send is called
     Then: Returns False
     """
     console = Console()
-    preview = {"to": ["recipient@example.com"], "subject": "Test", "body": "Body"}
+    draft = EmailDraft(to=["recipient@example.com"], subject="Test", body="Body")
 
     with patch("builtins.input", return_value="n"):
-      result = confirm_send(console, preview)
+      result = await confirm_send(console, draft)
       assert result is False
+
+
+class TestEmailDraft:
+  """Tests for EmailDraft dataclass."""
+
+  def test_email_draft_creation(self):
+    """
+    Given: Valid to, subject, body
+    When: EmailDraft is created
+    Then: All fields stored correctly
+    """
+    draft = EmailDraft(
+      to=["alice@example.com"],
+      subject="Hello",
+      body="Test body",
+      cc=["cc@example.com"],
+      bcc=["bcc@example.com"],
+      in_reply_to="<msg123@example.com>",
+      references=["<ref1@example.com>"],
+      mode="reply",
+    )
+    assert draft.to == ["alice@example.com"]
+    assert draft.subject == "Hello"
+    assert draft.body == "Test body"
+    assert draft.cc == ["cc@example.com"]
+    assert draft.bcc == ["bcc@example.com"]
+    assert draft.in_reply_to == "<msg123@example.com>"
+    assert draft.references == ["<ref1@example.com>"]
+    assert draft.mode == "reply"
+
+  def test_email_draft_default_cc_bcc(self):
+    """
+    Given: EmailDraft created without cc/bcc
+    When: Accessing cc and bcc
+    Then: Both default to empty lists
+    """
+    draft = EmailDraft(to=["alice@example.com"], subject="Hello", body="Test body")
+    assert draft.cc == []
+    assert draft.bcc == []
+    assert draft.in_reply_to is None
+    assert draft.references == []
+    assert draft.mode == "compose"
+
+  def test_email_draft_to_preview_dict(self):
+    """
+    Given: EmailDraft with all fields
+    When: to_preview_dict() called
+    Then: Returns dict with formatted to, cc, bcc, subject, body
+    """
+    draft = EmailDraft(
+      to=["alice@example.com", "bob@example.com"],
+      subject="Hello",
+      body="Test body",
+      cc=["cc@example.com"],
+      bcc=["bcc@example.com"],
+    )
+    preview = draft.to_preview_dict()
+    assert preview["to"] == "alice@example.com, bob@example.com"
+    assert preview["cc"] == "cc@example.com"
+    assert preview["bcc"] == "bcc@example.com"
+    assert preview["subject"] == "Hello"
+    assert preview["body"] == "Test body"
+    assert preview["mode"] == "compose"
+
+  def test_email_draft_empty_subject_preview(self):
+    """
+    Given: EmailDraft with empty subject
+    When: to_preview_dict() called
+    Then: Subject shown as '(no subject)'
+    """
+    draft = EmailDraft(to=["alice@example.com"], subject="", body="Test body")
+    preview = draft.to_preview_dict()
+    assert preview["subject"] == "(no subject)"
+
+  def test_email_draft_reply_mode(self):
+    """
+    Given: EmailDraft created for reply
+    When: Accessing mode field
+    Then: Mode is 'reply' and in_reply_to/references set
+    """
+    draft = EmailDraft(
+      to=["alice@example.com"],
+      subject="Re: Hello",
+      body="Reply body",
+      in_reply_to="<orig@example.com>",
+      references=["<ref@example.com>"],
+      mode="reply",
+    )
+    assert draft.mode == "reply"
+    assert draft.in_reply_to == "<orig@example.com>"
+    assert draft.references == ["<ref@example.com>"]
+
+
+class TestAsyncInputUtilities:
+  """Tests for async input utilities (post-refactor)."""
+
+  @pytest.mark.asyncio
+  async def test_get_recipients_input_validates_email(self):
+    """
+    Given: User enters invalid email address
+    When: get_recipients_input called
+    Then: ValueError raised with clear message
+    """
+    console = Console()
+    with patch("builtins.input", return_value="bad-email"):
+      with pytest.raises(ValueError):
+        await get_recipients_input(console, "Enter recipient")
+
+  @pytest.mark.asyncio
+  async def test_get_recipients_input_checks_whitelist(self):
+    """
+    Given: User enters email not in whitelist
+    When: get_recipients_input called
+    Then: WhitelistError raised with blocked address info
+    """
+    console = Console()
+    with patch("simple_email_gw.cli.display.get_recipient_whitelist") as mock_whitelist:
+      mock_whitelist.return_value.is_allowed.return_value = False
+      mock_whitelist.return_value.filter_recipients.return_value = ([], ["blocked@evil.com"])
+      with patch("builtins.input", return_value="blocked@evil.com"):
+        with pytest.raises(WhitelistError):
+          await get_recipients_input(console, "Enter recipient")
+
+  @pytest.mark.asyncio
+  async def test_get_recipients_input_handles_comma_separated(self):
+    """
+    Given: User enters 'a@x.com, b@x.com'
+    When: get_recipients_input called
+    Then: Returns ['a@x.com', 'b@x.com'] after validation
+    """
+    console = Console()
+    with patch("simple_email_gw.cli.display.get_recipient_whitelist") as mock_whitelist:
+      mock_whitelist.return_value.is_allowed.return_value = True
+      mock_whitelist.return_value.filter_recipients.return_value = (
+        ["a@x.com", "b@x.com"],
+        [],
+      )
+      with patch("builtins.input", return_value="a@x.com, b@x.com"):
+        result = await get_recipients_input(console, "Enter recipients")
+        assert result == ["a@x.com", "b@x.com"]
+
+  @pytest.mark.asyncio
+  async def test_get_recipients_input_empty_skips(self):
+    """
+    Given: User presses Enter with no input
+    When: get_recipients_input called for optional field
+    Then: Returns empty list
+    """
+    console = Console()
+    with patch("builtins.input", return_value=""):
+      result = await get_recipients_input(console, "Enter recipients")
+      assert result == []
+
+  @pytest.mark.asyncio
+  async def test_get_body_input_collects_multiline(self):
+    """
+    Given: User types multiple lines, then Ctrl+D
+    When: get_body_input called
+    Then: Returns concatenated text with newlines
+    """
+    console = Console()
+    with patch("builtins.input", side_effect=["Line 1", "Line 2", "Line 3", EOFError()]):
+      result = await get_body_input(console, "Enter body")
+      assert result == "Line 1\nLine 2\nLine 3"
+
+  @pytest.mark.asyncio
+  async def test_get_body_input_enforces_size_limit(self):
+    """
+    Given: User enters body exceeding 10MB
+    When: get_body_input called
+    Then: ValueError raised, body rejected
+    """
+    console = Console()
+    huge_line = "x" * (11 * 1024 * 1024)
+    with patch("builtins.input", side_effect=[huge_line, EOFError()]):
+      with pytest.raises(ValueError):
+        await get_body_input(console, "Enter body")
+
+  @pytest.mark.asyncio
+  async def test_confirm_send_returns_y(self):
+    """
+    Given: User enters 'y'
+    When: confirm_send called
+    Then: Returns True
+    """
+    console = Console()
+    draft = EmailDraft(to=["a@x.com"], subject="Test", body="Body")
+    with patch("builtins.input", return_value="y"):
+      result = await confirm_send(console, draft)
+      assert result is True
+
+  @pytest.mark.asyncio
+  async def test_confirm_send_returns_n(self):
+    """
+    Given: User enters 'n'
+    When: confirm_send called
+    Then: Returns False
+    """
+    console = Console()
+    draft = EmailDraft(to=["a@x.com"], subject="Test", body="Body")
+    with patch("builtins.input", return_value="n"):
+      result = await confirm_send(console, draft)
+      assert result is False
+
+  @pytest.mark.asyncio
+  async def test_confirm_send_returns_e(self):
+    """
+    Given: User enters 'e'
+    When: confirm_send called
+    Then: Returns None (edit)
+    """
+    console = Console()
+    draft = EmailDraft(to=["a@x.com"], subject="Test", body="Body")
+    with patch("builtins.input", return_value="e"):
+      result = await confirm_send(console, draft)
+      assert result is None
+
+  @pytest.mark.asyncio
+  async def test_confirm_send_case_insensitive(self):
+    """
+    Given: User enters 'Y' or 'YES' or 'N' or 'NO'
+    When: confirm_send called
+    Then: Correctly mapped to True/False
+    """
+    console = Console()
+    draft = EmailDraft(to=["a@x.com"], subject="Test", body="Body")
+    with patch("builtins.input", return_value="Y"):
+      assert await confirm_send(console, draft) is True
+    with patch("builtins.input", return_value="YES"):
+      assert await confirm_send(console, draft) is True
+    with patch("builtins.input", return_value="N"):
+      assert await confirm_send(console, draft) is False
+    with patch("builtins.input", return_value="NO"):
+      assert await confirm_send(console, draft) is False
+
+
+class TestPreviewDisplay:
+  """Tests for email preview display."""
+
+  def test_preview_truncates_body_at_500_chars(self):
+    """
+    Given: Body longer than 500 characters
+    When: Preview displayed
+    Then: Body truncated with continuation note
+    """
+    console = Console()
+    long_body = "a" * 600
+    draft = EmailDraft(to=["a@x.com"], subject="Test", body=long_body)
+    with patch("builtins.input", return_value="n"):
+      with patch.object(console, "print") as mock_print:
+        asyncio.run(confirm_send(console, draft))
+        # Verify truncation occurred in output
+        printed_texts = [str(call[0][0]) for call in mock_print.call_args_list if call[0]]
+        full_output = " ".join(printed_texts)
+        assert "... (" in full_output
+        assert "more characters)" in full_output
+
+  def test_preview_shows_metadata_table(self):
+    """
+    Given: Draft with From, To, CC, BCC, Subject
+    When: Preview displayed
+    Then: Rich Table with all metadata fields shown
+    """
+    console = Console()
+    draft = EmailDraft(
+      to=["a@x.com"],
+      subject="Test",
+      body="Body",
+      cc=["cc@x.com"],
+      bcc=["bcc@x.com"],
+    )
+    with patch("builtins.input", return_value="n"):
+      with patch.object(console, "print") as mock_print:
+        asyncio.run(confirm_send(console, draft, from_addr="from@x.com"))
+        printed_args = [call[0][0] for call in mock_print.call_args_list if call[0]]
+        tables = [arg for arg in printed_args if isinstance(arg, Table)]
+        assert len(tables) >= 1
+        table = tables[0]
+        # Render table to string to verify metadata labels appear as row content
+        from io import StringIO
+        output = StringIO()
+        test_console = Console(file=output, force_terminal=False, width=80)
+        test_console.print(table)
+        rendered = output.getvalue()
+        assert "From" in rendered
+        assert "To" in rendered
+        assert "Subject" in rendered
+
+  def test_preview_handles_no_cc_bcc(self):
+    """
+    Given: Draft without CC or BCC
+    When: Preview displayed
+    Then: CC/BCC shown as '(none)' or omitted
+    """
+    console = Console()
+    draft = EmailDraft(to=["a@x.com"], subject="Test", body="Body")
+    preview = draft.to_preview_dict()
+    assert preview["cc"] == "(none)"
+    assert preview["bcc"] == "(none)"
+
+  def test_preview_empty_subject(self):
+    """
+    Given: Draft with empty subject
+    When: Preview displayed
+    Then: Subject shown as '(no subject)'
+    """
+    console = Console()
+    draft = EmailDraft(to=["a@x.com"], subject="", body="Body")
+    preview = draft.to_preview_dict()
+    assert preview["subject"] == "(no subject)"

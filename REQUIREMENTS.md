@@ -29,25 +29,27 @@
   - Syntax-highlighted headers, attachment list, scrollable view with pager in display_email
   - Email caching layer implemented (3.3 complete)
 
-- [ ] R6: Email Composition (FR-006) — Satisfied by 4.1, 4.2, 4.4
-  - `write <recipient>` command with interactive subject/body input pending
-  - Preview and confirmation flow pending
-  - CC/BCC recipient support pending
-  - CRLF injection prevention and whitelist checking pending
+- [x] R6: Email Composition (FR-006) — Satisfied by 4.1, 4.2, 4.4 (Tasks 4.1–4.4)
+  - `write <recipient>` command with interactive subject/body input implemented
+  - Preview and confirmation flow with y/n/e implemented
+  - CC/BCC recipient support with validation and whitelist checking implemented
+  - CRLF injection prevention at CLI layer implemented
 
-- [ ] R7: Email Reply (FR-007) — Satisfied by 4.3, 4.4
-  - `reply <message_id>` command with pre-populated fields pending
-  - Quote original body and preserve threading headers pending
+- [x] R7: Email Reply (FR-007) — Satisfied by 4.3, 4.4 (Tasks 4.1–4.4)
+  - `reply <message_id>` command with pre-populated fields implemented
+  - Quote original body and preserve threading headers (In-Reply-To, References) implemented
 
-- [ ] R8: Session Management (FR-008) — Satisfied by 1.3, 6.2, 6.3
+- [ ] R8: Session Management (FR-008) — Partially satisfied by 1.3, 4.1–4.4, 6.2, 6.3
   - Session manager with account, folder, and client state implemented (1.3)
+  - Email caching for compose/reply workflows implemented (4.1–4.4)
   - `help`, `status`, `quit` commands pending (6.2, 6.3)
   - Keyboard interrupt handling pending (6.4)
 
-- [ ] R9: Error Handling (FR-009) — Satisfied by 7.1, 7.2, 7.3, 7.4
-  - User-friendly error panels with actionable suggestions pending
-  - Network/auth/rate limit/validation error mapping pending
-  - Graceful degradation for missing config pending
+- [ ] R9: Error Handling (FR-009) — Partially satisfied by 4.1–4.4, 7.1, 7.2, 7.3, 7.4
+  - User-friendly error panels with actionable suggestions implemented for compose commands
+  - Validation error mapping (ValueError, WhitelistError) implemented with PII-free messages
+  - Network/auth/rate limit error mapping at send stage implemented
+  - Graceful degradation for missing config pending (7.3)
 
 - [x] R10: Async Operation Indicators (FR-010) — Satisfied by 1.4, 2.3, 2.4, 3.1, 3.2, 4.2
   - Display utilities with spinner support implemented (1.4)
@@ -66,13 +68,19 @@
   - Automatic reconnection on transient failures pending
   - Session state preserved on errors pending
 
-- [ ] R13: Security (NFR-003) — Satisfied by 4.1, 7.1, 7.4
+- [ ] R13: Security (NFR-003) — Partially satisfied by 4.1–4.4, 7.1, 7.4
   - No passwords in logs/output (enforced by existing clients)
-  - CRLF injection prevention in all inputs pending
+  - CRLF injection prevention in recipients, subject, and threading headers implemented
+  - Email validation and whitelist enforcement at CLI input time implemented
+  - Body size limits enforced (10 MB)
+  - PII-free error messages implemented
   - Workspace confinement for attachments pending
   - TLS 1.2+ enforced via underlying clients
 
-- [ ] R14: Usability (NFR-004) — Satisfied by 6.1, 9.1, 9.2
+- [ ] R14: Usability (NFR-004) — Partially satisfied by 4.1–4.4, 6.1, 9.1, 9.2
+  - Interactive compose wizard with step-by-step prompts implemented
+  - Preview with metadata table and body truncation implemented
+  - Edit mode preserving draft text implemented
   - Intuitive command structure and consistent formatting pending
   - Clear error messages partially implemented via display utilities
   - Keyboard shortcuts documentation pending

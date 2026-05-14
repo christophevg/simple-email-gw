@@ -7,7 +7,7 @@ import os
 import re
 import ssl
 from email import encoders
-from email.message import EmailMessage
+from email.message import EmailMessage, Message
 from email.mime.base import MIMEBase
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
@@ -72,6 +72,8 @@ class SMTPClient:
     bcc: list[str] | None = None,
     html_body: str | None = None,
     attachments: list[str] | None = None,
+    in_reply_to: str | None = None,
+    references: list[str] | None = None,
   ) -> dict[str, str]:
     """Send an email message with optional HTML body and attachments.
 
@@ -87,6 +89,8 @@ class SMTPClient:
       bcc: Optional list of BCC recipients
       html_body: Optional HTML version of the body
       attachments: Optional list of file paths to attach
+      in_reply_to: Optional Message-ID of the original message being replied to
+      references: Optional list of Message-IDs in the thread history
 
     Returns:
       Dict with 'status', 'recipients', and 'message' keys
@@ -132,6 +136,15 @@ class SMTPClient:
       msg["Cc"] = ", ".join(cc)
     if bcc:
       msg["Bcc"] = ", ".join(bcc)
+
+    # Set threading headers if provided
+    if in_reply_to:
+      safe_in_reply_to = sanitize_message_id(in_reply_to)
+      msg["In-Reply-To"] = safe_in_reply_to
+
+    if references:
+      safe_references = sanitize_references(references)
+      msg["References"] = " ".join(safe_references)
 
     if isinstance(msg, EmailMessage):
       msg.set_content(body)
@@ -249,7 +262,7 @@ class SMTPClient:
       body=forward_body,
     )
 
-  async def _send(self, msg: EmailMessage, recipients: list[str]) -> dict[str, str]:
+  async def _send(self, msg: Message, recipients: list[str]) -> dict[str, str]:
     """Send message via SMTP with TLS 1.2 minimum."""
     async with self._lock:
       # Create SSL context with TLS 1.2 minimum

@@ -168,7 +168,7 @@ class IMAPClient:
 
       return folders
 
-  async def select_folder(self, folder: str = "INBOX") -> dict[str, int]:
+  async def select_folder(self, folder: str = "INBOX") -> dict[str, str | int]:
     """Select a folder and return message count."""
     # Sanitize folder name to prevent CRLF injection
     safe_folder = sanitize_folder_name(folder)
@@ -283,6 +283,8 @@ class IMAPClient:
         result["body"] = self._get_body(msg)
         result["attachments"] = self._list_attachments(msg)
         result["read"] = flags.get("Seen", False)
+        result["message_id"] = msg.get("Message-ID", "")
+        result["references"] = msg.get("References", "").split()
 
       return result
 

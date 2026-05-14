@@ -9,10 +9,11 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 import shlex
 from pathlib import Path
-from typing import TYPE_CHECKING
 
+import aiosmtplib
 from dotenv import load_dotenv
 from prompt_toolkit import PromptSession
 from prompt_toolkit.formatted_text import HTML
@@ -21,14 +22,23 @@ from prompt_toolkit.patch_stdout import patch_stdout
 from rich.console import Console
 from rich.table import Table
 
-from simple_email_gw.cli.display import display_error, display_success
+from simple_email_gw.cli.display import (
+  confirm_send,
+  display_error,
+  display_success,
+  display_warning,
+  EmailDraft,
+  get_body_input,
+  get_recipients_input,
+)
+from simple_email_gw.safety.sanitize import sanitize_subject
+from simple_email_gw.smtp.client import validate_email, WhitelistError
 from simple_email_gw.cli.session import Session
 from simple_email_gw.cli.theme import ThemeType, get_theme_manager
-from simple_email_gw.config import ServerConfig, get_accounts
+from simple_email_gw.config import ServerConfig, get_accounts, get_recipient_whitelist
 from simple_email_gw.connections.pool import RateLimitError
 
-if TYPE_CHECKING:
-  pass
+logger = logging.getLogger(__name__)
 
 
 class EmailCLI:
@@ -100,30 +110,30 @@ class EmailCLI:
         # Catch all other exceptions and display error panel
         self._handle_exception(e)
 
-  async def handle_command(self, input: str) -> None:
+  async def handle_command(self, user_input: str) -> None:
     """Parse and execute a user command.
 
     Args:
-        input: The raw user input string.
+        user_input: The raw user input string.
 
     This method:
-    1. Trims whitespace from input
+    1. Trims whitespace from user_input
     2. Handles empty input gracefully
     3. Parses the command and arguments (handling quoted strings)
     4. Routes to the appropriate command handler
     5. Handles unknown commands with error message
     """
     # Trim whitespace
-    input = input.strip()
+    user_input = user_input.strip()
 
     # Handle empty input
-    if not input:
+    if not user_input:
       return
 
     # Parse command and arguments (case-insensitive for command)
     try:
       # Use shlex to properly handle quoted strings
-      parts = shlex.split(input)
+      parts = shlex.split(user_input)
     except ValueError as e:
       # Handle shlex parsing errors (e.g., unbalanced quotes)
       display_error(
@@ -604,8 +614,167 @@ class EmailCLI:
     except Exception as e:
       display_error(self.console, f"Unexpected error: {e}", "Please try again or check logs")
 
+  def _extract_bare_email(self, from_header: str) -> str:
+    """Extract and validate a bare email address from a From header.
+
+    Handles both angle-bracketed addresses (e.g., "Name <email@example.com>")
+    and bare addresses. Always validates the extracted email regardless of
+    extraction method to prevent header injection.
+
+    Args:
+        from_header: The raw From header value.
+
+    Returns:
+        The validated bare email address.
+
+    Raises:
+        ValueError: If no valid email address can be extracted.
+    """
+    if not from_header:
+      raise ValueError("Empty From header")
+
+    match = re.search(r"<(.+?)>", from_header)
+    if match:
+      bare_email = match.group(1)
+      validate_email(bare_email)
+      return bare_email
+
+    # Fallback: treat entire header as bare email
+    validate_email(from_header)
+    return from_header
+
+  async def _compose_and_send(
+    self,
+    draft: EmailDraft,
+    body_prompt: str = "Body:",
+    quoted_body: str = "",
+  ) -> None:
+    """Collect body input, preview, confirm, and send an email draft.
+
+    This helper encapsulates the shared compose flow between write and reply
+    commands:
+    1. Body collection loop with Ctrl+D/Ctrl+C handling
+    2. Empty body warning + confirmation
+    3. Preview + confirm_send() loop (y/n/e)
+    4. SMTP send with spinner
+    5. Success/error display
+
+    Args:
+        draft: Email draft with pre-populated metadata (to, subject, etc.).
+        body_prompt: Prompt text for body input.
+        quoted_body: Optional quoted text to append after user input (for replies).
+    """
+    user_body = ""
+
+    while True:
+      try:
+        additional = await get_body_input(self.console, body_prompt, self.prompt_session)
+      except (EOFError, KeyboardInterrupt):
+        mode_label = "Compose" if draft.mode == "compose" else "Reply"
+        self.console.print(f"\n[dim]{mode_label} cancelled.[/dim]")
+        return
+      except ValueError:
+        display_error(
+          self.console,
+          "Body exceeds maximum size",
+          "Reduce message size and try again",
+        )
+        return
+
+      if additional.strip():
+        if user_body:
+          user_body = user_body + "\n" + additional.strip()
+        else:
+          user_body = additional.strip()
+
+      # Build final body
+      if quoted_body:
+        draft.body = (user_body + "\n\n" + quoted_body) if user_body else quoted_body
+      else:
+        draft.body = user_body
+
+      # Empty body warning
+      if not draft.body.strip():
+        display_warning(self.console, "Body is empty")
+        self.console.print("[bold]Send anyway? (y/n): [/bold]")
+        try:
+          resp = await self.prompt_session.prompt_async("")
+          if resp.strip().lower() not in ("y", "yes"):
+            mode_label = "Email" if draft.mode == "compose" else "Reply"
+            display_warning(self.console, f"{mode_label} discarded.")
+            return
+        except (EOFError, KeyboardInterrupt):
+          mode_label = "Email" if draft.mode == "compose" else "Reply"
+          display_warning(self.console, f"{mode_label} discarded.")
+          return
+
+      result = await confirm_send(
+        self.console,
+        draft,
+        self.prompt_session,
+        from_addr=self.session.current_account.username if self.session.current_account else "",
+      )
+
+      if result is True:
+        break
+      elif result is False:
+        mode_label = "Email" if draft.mode == "compose" else "Reply"
+        display_warning(self.console, f"{mode_label} discarded.")
+        return
+      elif result is None:
+        mode_label = "body" if draft.mode == "compose" else "reply"
+        self.console.print(f"[dim]Editing {mode_label}. Current text preserved.[/dim]")
+        continue
+
+    # Send email
+    try:
+      with self.console.status("[bold green]Sending...[/bold green]"):
+        client = await self.session.get_smtp_client()
+        await client.send_email(
+          to=draft.to,
+          subject=draft.subject,
+          body=draft.body,
+          cc=draft.cc or None,
+          bcc=draft.bcc or None,
+          in_reply_to=draft.in_reply_to if draft.in_reply_to else None,
+          references=draft.references if draft.references else None,
+        )
+      mode_label = "Email" if draft.mode == "compose" else "Reply"
+      display_success(self.console, f"{mode_label} sent to {len(draft.to)} recipient(s)")
+    except (ValueError, WhitelistError):
+      mode_label = "email" if draft.mode == "compose" else "reply"
+      display_error(
+        self.console,
+        f"Failed to send {mode_label}",
+        "Check recipient addresses and whitelist settings",
+      )
+    except (aiosmtplib.SMTPException, ConnectionError, TimeoutError, RuntimeError) as e:
+      logger.error("Send error: %s", e)
+      mode_label = "email" if draft.mode == "compose" else "reply"
+      display_error(
+        self.console,
+        f"Failed to send {mode_label}",
+        "Check your connection and try again",
+      )
+    except Exception as e:
+      logger.error("Unexpected send error: %s", e)
+      mode_label = "email" if draft.mode == "compose" else "reply"
+      display_error(
+        self.console,
+        f"Failed to send {mode_label}",
+        "Check your connection and try again",
+      )
+
   async def _cmd_write(self, args: list[str]) -> None:
-    """Write email (placeholder)."""
+    """Compose and send a new email.
+
+    Flow:
+    1. Validate account is selected
+    2. Parse and validate recipients from args
+    3. Prompt for subject (warn if empty)
+    4. Prompt for optional CC/BCC with validation
+    5. Build draft and delegate to _compose_and_send
+    """
     if not self.session.current_account:
       display_error(
         self.console,
@@ -614,14 +783,111 @@ class EmailCLI:
       )
       return
 
-    display_error(
-      self.console,
-      "Command not implemented yet",
-      "This command will be implemented in a future task",
-    )
+    if not args:
+      display_error(
+        self.console,
+        "Usage: write <recipient>[,<recipient>...]",
+        "Provide at least one recipient email address",
+      )
+      return
+
+    # Parse primary recipients (join all args with commas to support space-separated)
+    recipients_str = ",".join(args)
+    raw_recipients = [r.strip() for r in recipients_str.split(",") if r.strip()]
+
+    # Validate and whitelist check
+    try:
+      for addr in raw_recipients:
+        validate_email(addr)
+      whitelist = get_recipient_whitelist()
+      allowed, blocked = whitelist.filter_recipients(raw_recipients)
+      if blocked:
+        raise WhitelistError("Recipients not in whitelist")
+      to = allowed
+    except (ValueError, WhitelistError):
+      display_error(
+        self.console,
+        "Invalid or blocked recipient",
+        "Check the email address format and whitelist settings",
+      )
+      return
+
+    # Prompt for subject (reject CRLF)
+    subject = ""
+    while True:
+      try:
+        self.console.print("[bold]Subject:[/bold]")
+        subject = await self.prompt_session.prompt_async("")
+      except (EOFError, KeyboardInterrupt):
+        self.console.print("\n[dim]Compose cancelled.[/dim]")
+        return
+
+      if "\r" in subject or "\n" in subject:
+        display_warning(self.console, "Subject cannot contain line breaks")
+        continue
+
+      break
+
+    if not subject.strip():
+      display_warning(self.console, "Subject is empty")
+
+    # Prompt for CC (re-prompt on invalid input)
+    cc: list[str] = []
+    while True:
+      try:
+        cc = await get_recipients_input(self.console, "CC (optional):", self.prompt_session)
+        break
+      except ValueError:
+        display_error(
+          self.console,
+          "Invalid CC recipient",
+          "Check the email address format",
+        )
+      except WhitelistError:
+        display_error(
+          self.console,
+          "CC recipient blocked by whitelist",
+          "Use a different recipient",
+        )
+      except (EOFError, KeyboardInterrupt):
+        self.console.print("\n[dim]Compose cancelled.[/dim]")
+        return
+
+    # Prompt for BCC (re-prompt on invalid input)
+    bcc: list[str] = []
+    while True:
+      try:
+        bcc = await get_recipients_input(self.console, "BCC (optional):", self.prompt_session)
+        break
+      except ValueError:
+        display_error(
+          self.console,
+          "Invalid BCC recipient",
+          "Check the email address format",
+        )
+      except WhitelistError:
+        display_error(
+          self.console,
+          "BCC recipient blocked by whitelist",
+          "Use a different recipient",
+        )
+      except (EOFError, KeyboardInterrupt):
+        self.console.print("\n[dim]Compose cancelled.[/dim]")
+        return
+
+    draft = EmailDraft(to=to, subject=subject, cc=cc, bcc=bcc, mode="compose")
+    await self._compose_and_send(draft)
 
   async def _cmd_reply(self, args: list[str]) -> None:
-    """Reply to email (placeholder)."""
+    """Reply to an existing email.
+
+    Flow:
+    1. Validate account is selected and message ID is numeric
+    2. Fetch original email (cache first, then IMAP)
+    3. Extract, validate, and whitelist-check sender address
+    4. Sanitize subject and pre-populate threading headers
+    5. Quote original body and delegate to _compose_and_send
+    """
     if not self.session.current_account:
       display_error(
         self.console,
@@ -630,10 +896,113 @@ class EmailCLI:
       )
       return
 
-    display_error(
-      self.console,
-      "Command not implemented yet",
-      "This command will be implemented in a future task",
+    if not args:
+      display_error(
+        self.console,
+        "Usage: reply <message_id>",
+        "Provide a numeric message ID",
+      )
+      return
+
+    message_id = args[0]
+
+    # Validate message ID is numeric
+    if not message_id.isdigit():
+      display_error(
+        self.console,
+        "Message ID must be a number",
+        "Use 'ls' to see available message IDs",
+      )
+      return
+
+    # Fetch original email
+    original = self.session.get_cached_email(message_id)
+    if original is None:
+      try:
+        with self.console.status("[bold green]Fetching original message...[/bold green]"):
+          client = await self.session.get_imap_client()
+          original = await client.fetch_message(
+            message_id, folder=self.session.current_folder
+          )
+        self.session.cache_email(message_id, original)
+      except KeyboardInterrupt:
+        self.console.print("\n[dim]Fetch cancelled.[/dim]")
+        return
+      except (ConnectionError, TimeoutError) as e:
+        display_error(self.console, f"Connection failed: {e}", "Check your network and try again")
+        return
+      except Exception:
+        display_error(
+          self.console,
+          "Failed to fetch original message",
+          "Check the message ID and try again",
+        )
+        return
+
+    if not original:
+      display_error(
+        self.console,
+        f"Message {message_id} not found",
+        "Use 'ls' to see available messages",
+      )
+      return
+
+    # Extract and validate sender address
+    from_header = original.get("from", "")
+    try:
+      bare_email = self._extract_bare_email(from_header)
+    except ValueError:
+      display_error(
+        self.console,
+        "Original message has no valid sender address",
+        "Cannot reply to this message",
+      )
+      return
+
+    # Whitelist check at CLI input time
+    whitelist = get_recipient_whitelist()
+    if not whitelist.is_allowed(bare_email):
+      display_error(
+        self.console,
+        "Reply recipient blocked by whitelist",
+        "Cannot reply to this sender",
+      )
+      return
+    to = [bare_email]
+
+    # Sanitize original subject before constructing reply subject
+    original_subject = original.get("subject", "")
+    try:
+      safe_subject = sanitize_subject(original_subject)
+    except ValueError:
+      safe_subject = ""
+
+    if safe_subject.lower().startswith("re: "):
+      subject = safe_subject
+    else:
+      subject = f"Re: {safe_subject}" if safe_subject else "Re: (no subject)"
+
+    # Threading headers
+    in_reply_to = original.get("message_id", "")
+    references = original.get("references", [])
+    if in_reply_to and in_reply_to not in references:
+      references = references + [in_reply_to]
+
+    # Quote original body
+    original_body = original.get("body", "")
+    quoted_body = "\n".join(f"> {line}" for line in original_body.splitlines())
+
+    draft = EmailDraft(
+      to=to,
+      subject=subject,
+      in_reply_to=in_reply_to,
+      references=references,
+      mode="reply",
+    )
+    await self._compose_and_send(
+      draft,
+      body_prompt="Enter your reply:",
+      quoted_body=quoted_body,
     )
 
   async def _cmd_delete(self, args: list[str]) -> None:

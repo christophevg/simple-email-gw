@@ -1441,3 +1441,792 @@ class TestSessionCleanup:
         # Only 'quit' should call disconnect
         # Disconnect is called once when quitting
         mock_disconnect.assert_called_once()
+
+
+class TestWriteCommand:
+  """Tests for the write email composition command."""
+
+  @pytest.mark.asyncio
+  async def test_write_command_no_account_shows_error(self):
+    """
+    Given: No account is selected
+    When: User runs 'write recipient@example.com'
+    Then: Error panel is shown suggesting 'use <account>'
+    """
+    cli = EmailCLI()
+    with patch.object(cli.console, "print") as mock_print:
+      await cli._cmd_write(["recipient@example.com"])
+      assert mock_print.called
+
+  @pytest.mark.asyncio
+  async def test_write_command_valid_recipient_starts_compose(self, mock_account):
+    """
+    Given: Account is selected and recipient is valid
+    When: User runs 'write alice@example.com'
+    Then: Compose wizard starts with subject prompt
+    """
+    cli = EmailCLI()
+    cli.session.set_account(mock_account)
+    with patch("simple_email_gw.cli.app.get_recipient_whitelist") as mock_wl:
+      mock_wl.return_value.is_allowed.return_value = True
+      mock_wl.return_value.filter_recipients.return_value = (["alice@example.com"], [])
+      cli.prompt_session.prompt_async = AsyncMock(side_effect=["Subject", "", "", "Body", EOFError(), "y", "y"])
+      with patch.object(cli.console, "print") as mock_print:
+        await cli._cmd_write(["alice@example.com"])
+        # Verify subject prompt occurred (console printed "Subject:" prompt)
+        assert mock_print.called
+
+  @pytest.mark.asyncio
+  async def test_write_command_invalid_recipient_aborts(self, mock_account):
+    """
+    Given: Account is selected but recipient is malformed
+    When: User runs 'write bad-email'
+    Then: Error panel shown, returns to REPL without starting wizard
+    """
+    cli = EmailCLI()
+    cli.session.set_account(mock_account)
+    with patch.object(cli.console, "print") as mock_print:
+      await cli._cmd_write(["bad-email"])
+      assert mock_print.called
+
+  @pytest.mark.asyncio
+  async def test_write_command_whitelist_violation_aborts(self, mock_account):
+    """
+    Given: Account is selected but recipient is not in whitelist
+    When: User runs 'write blocked@evil.com'
+    Then: Error panel shows whitelist violation, returns to REPL
+    """
+    cli = EmailCLI()
+    cli.session.set_account(mock_account)
+    with patch("simple_email_gw.cli.app.get_recipient_whitelist") as mock_wl:
+      mock_wl.return_value.is_allowed.return_value = False
+      mock_wl.return_value.filter_recipients.return_value = ([], ["blocked@evil.com"])
+      with patch.object(cli.console, "print") as mock_print:
+        await cli._cmd_write(["blocked@evil.com"])
+        assert mock_print.called
+
+  @pytest.mark.asyncio
+  async def test_write_command_invalid_cc_reprompts(self, mock_account):
+    """
+    Given: User is composing email and enters invalid CC
+    When: CC validation fails
+    Then: Only CC field is re-prompted, flow continues
+    """
+    cli = EmailCLI()
+    cli.session.set_account(mock_account)
+    with patch("simple_email_gw.cli.app.get_recipient_whitelist") as mock_wl:
+      mock_wl.return_value.is_allowed.return_value = True
+      mock_wl.return_value.filter_recipients.side_effect = [
+        (["alice@example.com"], []),  # To
+        (["cc@example.com"], []),      # CC (valid, after invalid email was caught by validate_email)
+        ([], []),                      # BCC
+      ]
+      cli.prompt_session.prompt_async = AsyncMock(
+        side_effect=["Subject", "bad-cc", "cc@example.com", "", "Body", EOFError(), "y", "y"]
+      )
+      with patch.object(cli.session, "get_smtp_client", new_callable=AsyncMock) as mock_smtp:
+        mock_client = AsyncMock()
+        mock_smtp.return_value = mock_client
+        with patch.object(cli.console, "print"):
+          await cli._cmd_write(["alice@example.com"])
+          mock_client.send_email.assert_called_once()
+
+  @pytest.mark.asyncio
+  async def test_write_command_empty_subject_warns(self, mock_account):
+    """
+    Given: User presses Enter at subject prompt
+    When: Subject is empty
+    Then: Warning panel shown, composition continues
+    """
+    cli = EmailCLI()
+    cli.session.set_account(mock_account)
+    with patch("simple_email_gw.cli.app.get_recipient_whitelist") as mock_wl:
+      mock_wl.return_value.is_allowed.return_value = True
+      mock_wl.return_value.filter_recipients.return_value = (["alice@example.com"], [])
+      cli.prompt_session.prompt_async = AsyncMock(side_effect=["", "", "", "Body", EOFError(), "y", "y"])
+      with patch("simple_email_gw.cli.app.display_warning") as mock_warn:
+        with patch.object(cli.session, "get_smtp_client", new_callable=AsyncMock) as mock_smtp:
+          mock_client = AsyncMock()
+          mock_smtp.return_value = mock_client
+          await cli._cmd_write(["alice@example.com"])
+          mock_warn.assert_called()
+
+  @pytest.mark.asyncio
+  async def test_write_command_empty_body_confirms(self, mock_account):
+    """
+    Given: User presses Ctrl+D immediately at body prompt
+    When: Body is empty
+    Then: Warning with 'Send anyway? (y/n)' prompt shown
+    """
+    cli = EmailCLI()
+    cli.session.set_account(mock_account)
+    with patch("simple_email_gw.cli.app.get_recipient_whitelist") as mock_wl:
+      mock_wl.return_value.is_allowed.return_value = True
+      mock_wl.return_value.filter_recipients.return_value = (["alice@example.com"], [])
+      cli.prompt_session.prompt_async = AsyncMock(side_effect=["Subject", "", "", "", EOFError(), "y", "y"])
+      with patch("simple_email_gw.cli.app.display_warning") as mock_warn:
+        with patch.object(cli.session, "get_smtp_client", new_callable=AsyncMock) as mock_smtp:
+          mock_client = AsyncMock()
+          mock_smtp.return_value = mock_client
+          await cli._cmd_write(["alice@example.com"])
+          mock_warn.assert_called()
+
+  @pytest.mark.asyncio
+  async def test_write_command_ctrl_c_cancels_compose(self, mock_account):
+    """
+    Given: User is in compose wizard
+    When: Ctrl+C is pressed at any prompt
+    Then: Compose cancelled, returns to REPL
+    """
+    cli = EmailCLI()
+    cli.session.set_account(mock_account)
+    cli.prompt_session.prompt_async = AsyncMock(side_effect=KeyboardInterrupt())
+    with patch.object(cli.console, "print") as mock_print:
+      await cli._cmd_write(["alice@example.com"])
+      # Should print cancellation message
+      printed_texts = [str(call[0][0]) for call in mock_print.call_args_list if call[0]]
+      assert any("cancelled" in t.lower() for t in printed_texts)
+
+  @pytest.mark.asyncio
+  async def test_write_command_preview_and_confirm_y(self, mock_account):
+    """
+    Given: User completed body input
+    When: Preview shown and user confirms 'y'
+    Then: Email is sent, success panel displayed
+    """
+    cli = EmailCLI()
+    cli.session.set_account(mock_account)
+    with patch("simple_email_gw.cli.app.get_recipient_whitelist") as mock_wl:
+      mock_wl.return_value.is_allowed.return_value = True
+      mock_wl.return_value.filter_recipients.return_value = (["alice@example.com"], [])
+      cli.prompt_session.prompt_async = AsyncMock(side_effect=["Subject", "", "", "Body", EOFError(), "y", "y"])
+      with patch.object(cli.session, "get_smtp_client", new_callable=AsyncMock) as mock_smtp:
+        mock_client = AsyncMock()
+        mock_smtp.return_value = mock_client
+        with patch("simple_email_gw.cli.app.display_success") as mock_success:
+          await cli._cmd_write(["alice@example.com"])
+          mock_client.send_email.assert_called_once()
+          mock_success.assert_called_once()
+
+  @pytest.mark.asyncio
+  async def test_write_command_preview_and_confirm_n(self, mock_account):
+    """
+    Given: User completed body input
+    When: Preview shown and user declines 'n'
+    Then: Email discarded, returns to REPL
+    """
+    cli = EmailCLI()
+    cli.session.set_account(mock_account)
+    with patch("simple_email_gw.cli.app.get_recipient_whitelist") as mock_wl:
+      mock_wl.return_value.is_allowed.return_value = True
+      mock_wl.return_value.filter_recipients.return_value = (["alice@example.com"], [])
+      cli.prompt_session.prompt_async = AsyncMock(side_effect=["Subject", "", "", "Body", EOFError(), "n"])
+      with patch("simple_email_gw.cli.app.display_warning") as mock_warn:
+        with patch.object(cli.session, "get_smtp_client", new_callable=AsyncMock) as mock_smtp:
+          mock_client = AsyncMock()
+          mock_smtp.return_value = mock_client
+          await cli._cmd_write(["alice@example.com"])
+          mock_client.send_email.assert_not_called()
+          mock_warn.assert_called()
+
+  @pytest.mark.asyncio
+  async def test_write_command_preview_and_edit(self, mock_account):
+    """
+    Given: User completed body input
+    When: Preview shown and user chooses 'e' to edit
+    Then: Returns to body input with existing text preserved
+    """
+    cli = EmailCLI()
+    cli.session.set_account(mock_account)
+    with patch("simple_email_gw.cli.app.get_recipient_whitelist") as mock_wl:
+      mock_wl.return_value.is_allowed.return_value = True
+      mock_wl.return_value.filter_recipients.return_value = (["alice@example.com"], [])
+      # Subject, CC, BCC, Body1, confirm 'e', Body2, confirm 'y', send anyway 'y'
+      cli.prompt_session.prompt_async = AsyncMock(
+        side_effect=["Subject", "", "", "First body", EOFError(), "e", "Second body", EOFError(), "y", "y"]
+      )
+      with patch.object(cli.session, "get_smtp_client", new_callable=AsyncMock) as mock_smtp:
+        mock_client = AsyncMock()
+        mock_smtp.return_value = mock_client
+        await cli._cmd_write(["alice@example.com"])
+        mock_client.send_email.assert_called_once()
+        call_kwargs = mock_client.send_email.call_args.kwargs
+        assert "First body" in call_kwargs.get("body", "")
+
+  @pytest.mark.asyncio
+  async def test_write_command_send_failure_shows_error(self, mock_account):
+    """
+    Given: User confirms send
+    When: SMTP send fails
+    Then: Error panel with actionable suggestion displayed
+    """
+    cli = EmailCLI()
+    cli.session.set_account(mock_account)
+    with patch("simple_email_gw.cli.app.get_recipient_whitelist") as mock_wl:
+      mock_wl.return_value.is_allowed.return_value = True
+      mock_wl.return_value.filter_recipients.return_value = (["alice@example.com"], [])
+      cli.prompt_session.prompt_async = AsyncMock(side_effect=["Subject", "", "", "Body", EOFError(), "y", "y"])
+      with patch.object(cli.session, "get_smtp_client", new_callable=AsyncMock) as mock_smtp:
+        mock_client = AsyncMock()
+        mock_client.send_email = AsyncMock(side_effect=RuntimeError("SMTP failed"))
+        mock_smtp.return_value = mock_client
+        with patch("simple_email_gw.cli.app.display_error") as mock_error:
+          await cli._cmd_write(["alice@example.com"])
+          mock_error.assert_called_once()
+
+  @pytest.mark.asyncio
+  async def test_write_command_send_success_shows_panel(self, mock_account):
+    """
+    Given: User confirms send
+    When: SMTP send succeeds
+    Then: Success panel with recipient list displayed
+    """
+    cli = EmailCLI()
+    cli.session.set_account(mock_account)
+    with patch("simple_email_gw.cli.app.get_recipient_whitelist") as mock_wl:
+      mock_wl.return_value.is_allowed.return_value = True
+      mock_wl.return_value.filter_recipients.return_value = (["alice@example.com"], [])
+      cli.prompt_session.prompt_async = AsyncMock(side_effect=["Subject", "", "", "Body", EOFError(), "y", "y"])
+      with patch.object(cli.session, "get_smtp_client", new_callable=AsyncMock) as mock_smtp:
+        mock_client = AsyncMock()
+        mock_smtp.return_value = mock_client
+        with patch("simple_email_gw.cli.app.display_success") as mock_success:
+          await cli._cmd_write(["alice@example.com"])
+          mock_success.assert_called_once()
+
+  @pytest.mark.asyncio
+  async def test_write_command_uses_smtp_client(self, mock_account):
+    """
+    Given: User confirms send
+    When: Email is sent
+    Then: session.get_smtp_client() and client.send_email() are called
+    """
+    cli = EmailCLI()
+    cli.session.set_account(mock_account)
+    with patch("simple_email_gw.cli.app.get_recipient_whitelist") as mock_wl:
+      mock_wl.return_value.is_allowed.return_value = True
+      mock_wl.return_value.filter_recipients.return_value = (["alice@example.com"], [])
+      cli.prompt_session.prompt_async = AsyncMock(side_effect=["Subject", "", "", "Body", EOFError(), "y", "y"])
+      with patch.object(cli.session, "get_smtp_client", new_callable=AsyncMock) as mock_smtp:
+        mock_client = AsyncMock()
+        mock_smtp.return_value = mock_client
+        await cli._cmd_write(["alice@example.com"])
+        mock_smtp.assert_called_once()
+        mock_client.send_email.assert_called_once()
+
+
+class TestReplyCommand:
+  """Tests for the reply email command."""
+
+  @pytest.mark.asyncio
+  async def test_reply_command_no_account_shows_error(self):
+    """
+    Given: No account is selected
+    When: User runs 'reply 123'
+    Then: Error panel shown suggesting 'use <account>'
+    """
+    cli = EmailCLI()
+    with patch.object(cli.console, "print") as mock_print:
+      await cli._cmd_reply(["123"])
+      assert mock_print.called
+
+  @pytest.mark.asyncio
+  async def test_reply_command_invalid_message_id_shows_error(self, mock_account):
+    """
+    Given: Account is selected
+    When: User runs 'reply abc' (non-numeric)
+    Then: Error panel shown suggesting valid message ID
+    """
+    cli = EmailCLI()
+    cli.session.set_account(mock_account)
+    with patch.object(cli.console, "print") as mock_print:
+      await cli._cmd_reply(["abc"])
+      assert mock_print.called
+
+  @pytest.mark.asyncio
+  async def test_reply_command_fetches_original_from_cache(self, mock_account):
+    """
+    Given: Account selected and message in cache
+    When: User runs 'reply 123'
+    Then: Original email fetched from cache, fields pre-populated
+    """
+    cli = EmailCLI()
+    cli.session.set_account(mock_account)
+    cli.session.set_folder("INBOX")
+    original = {
+      "id": "123",
+      "from": "original@example.com",
+      "subject": "Hello",
+      "body": "Original text",
+      "message_id": "<msg123@example.com>",
+      "references": ["<ref1@example.com>"],
+    }
+    cli.session.cache_email("123", original)
+    with patch("simple_email_gw.cli.app.get_recipient_whitelist") as mock_wl:
+      mock_wl.return_value.is_allowed.return_value = True
+      mock_wl.return_value.filter_recipients.return_value = (["original@example.com"], [])
+      cli.prompt_session.prompt_async = AsyncMock(side_effect=["", EOFError(), "y", "y"])
+      with patch.object(cli.session, "get_smtp_client", new_callable=AsyncMock) as mock_smtp:
+        mock_client = AsyncMock()
+        mock_smtp.return_value = mock_client
+        with patch.object(cli.session, "get_imap_client", new_callable=AsyncMock) as mock_imap:
+          await cli._cmd_reply(["123"])
+          mock_imap.assert_not_called()
+          mock_client.send_email.assert_called_once()
+          kwargs = mock_client.send_email.call_args.kwargs
+          assert kwargs["to"] == ["original@example.com"]
+
+  @pytest.mark.asyncio
+  async def test_reply_command_fetches_original_from_imap(self, mock_account):
+    """
+    Given: Account selected and message not in cache
+    When: User runs 'reply 123'
+    Then: IMAP fetch called, message cached, fields pre-populated
+    """
+    cli = EmailCLI()
+    cli.session.set_account(mock_account)
+    cli.session.set_folder("INBOX")
+    original = {
+      "id": "123",
+      "from": "original@example.com",
+      "subject": "Hello",
+      "body": "Original text",
+      "message_id": "<msg123@example.com>",
+      "references": ["<ref1@example.com>"],
+    }
+    with patch("simple_email_gw.cli.app.get_recipient_whitelist") as mock_wl:
+      mock_wl.return_value.is_allowed.return_value = True
+      mock_wl.return_value.filter_recipients.return_value = (["original@example.com"], [])
+      cli.prompt_session.prompt_async = AsyncMock(side_effect=["", EOFError(), "y", "y"])
+      with patch.object(cli.session, "get_smtp_client", new_callable=AsyncMock) as mock_smtp:
+        mock_client = AsyncMock()
+        mock_smtp.return_value = mock_client
+        with patch.object(cli.session, "get_imap_client", new_callable=AsyncMock) as mock_imap:
+          mock_imap_client = AsyncMock()
+          mock_imap_client.fetch_message = AsyncMock(return_value=original)
+          mock_imap.return_value = mock_imap_client
+          await cli._cmd_reply(["123"])
+          mock_imap.assert_called_once()
+          mock_imap_client.fetch_message.assert_called_once_with(
+            "123", folder="INBOX"
+          )
+          assert cli.session.get_cached_email("123") == original
+
+  @pytest.mark.asyncio
+  async def test_reply_command_message_not_found(self, mock_account):
+    """
+    Given: Account selected but message ID not found
+    When: User runs 'reply 999'
+    Then: Error panel shown suggesting 'ls'
+    """
+    cli = EmailCLI()
+    cli.session.set_account(mock_account)
+    cli.session.set_folder("INBOX")
+    with patch.object(cli.console, "print") as mock_print:
+      with patch.object(cli.session, "get_imap_client", new_callable=AsyncMock) as mock_imap:
+        mock_imap_client = AsyncMock()
+        mock_imap_client.fetch_message = AsyncMock(return_value=None)
+        mock_imap.return_value = mock_imap_client
+        await cli._cmd_reply(["999"])
+        assert mock_print.called
+
+  @pytest.mark.asyncio
+  async def test_reply_command_prepopulates_to_from_original(self, mock_account):
+    """
+    Given: Original email has From: original@example.com
+    When: Reply wizard starts
+    Then: To field pre-populated with original@example.com
+    """
+    cli = EmailCLI()
+    cli.session.set_account(mock_account)
+    cli.session.set_folder("INBOX")
+    original = {
+      "id": "123",
+      "from": "original@example.com",
+      "subject": "Hello",
+      "body": "Original text",
+      "message_id": "<msg123@example.com>",
+      "references": [],
+    }
+    cli.session.cache_email("123", original)
+    with patch("simple_email_gw.cli.app.get_recipient_whitelist") as mock_wl:
+      mock_wl.return_value.is_allowed.return_value = True
+      mock_wl.return_value.filter_recipients.return_value = (["original@example.com"], [])
+      cli.prompt_session.prompt_async = AsyncMock(side_effect=["", EOFError(), "y", "y"])
+      with patch.object(cli.session, "get_smtp_client", new_callable=AsyncMock) as mock_smtp:
+        mock_client = AsyncMock()
+        mock_smtp.return_value = mock_client
+        await cli._cmd_reply(["123"])
+        mock_client.send_email.assert_called_once()
+        kwargs = mock_client.send_email.call_args.kwargs
+        assert kwargs["to"] == ["original@example.com"]
+
+  @pytest.mark.asyncio
+  async def test_reply_command_prepopulates_subject_with_re(self, mock_account):
+    """
+    Given: Original subject is 'Hello'
+    When: Reply wizard starts
+    Then: Subject pre-populated with 'Re: Hello'
+    """
+    cli = EmailCLI()
+    cli.session.set_account(mock_account)
+    cli.session.set_folder("INBOX")
+    original = {
+      "id": "123",
+      "from": "original@example.com",
+      "subject": "Hello",
+      "body": "Original text",
+      "message_id": "<msg123@example.com>",
+      "references": [],
+    }
+    cli.session.cache_email("123", original)
+    with patch("simple_email_gw.cli.app.get_recipient_whitelist") as mock_wl:
+      mock_wl.return_value.is_allowed.return_value = True
+      mock_wl.return_value.filter_recipients.return_value = (["original@example.com"], [])
+      cli.prompt_session.prompt_async = AsyncMock(side_effect=["", EOFError(), "y", "y"])
+      with patch.object(cli.session, "get_smtp_client", new_callable=AsyncMock) as mock_smtp:
+        mock_client = AsyncMock()
+        mock_smtp.return_value = mock_client
+        await cli._cmd_reply(["123"])
+        mock_client.send_email.assert_called_once()
+        kwargs = mock_client.send_email.call_args.kwargs
+        assert kwargs["subject"] == "Re: Hello"
+
+  @pytest.mark.asyncio
+  async def test_reply_command_deduplicates_re_prefix(self, mock_account):
+    """
+    Given: Original subject is 'Re: Hello'
+    When: Reply wizard starts
+    Then: Subject is 'Re: Hello' (not 'Re: Re: Hello')
+    """
+    cli = EmailCLI()
+    cli.session.set_account(mock_account)
+    cli.session.set_folder("INBOX")
+    original = {
+      "id": "123",
+      "from": "original@example.com",
+      "subject": "Re: Hello",
+      "body": "Original text",
+      "message_id": "<msg123@example.com>",
+      "references": [],
+    }
+    cli.session.cache_email("123", original)
+    with patch("simple_email_gw.cli.app.get_recipient_whitelist") as mock_wl:
+      mock_wl.return_value.is_allowed.return_value = True
+      mock_wl.return_value.filter_recipients.return_value = (["original@example.com"], [])
+      cli.prompt_session.prompt_async = AsyncMock(side_effect=["", EOFError(), "y", "y"])
+      with patch.object(cli.session, "get_smtp_client", new_callable=AsyncMock) as mock_smtp:
+        mock_client = AsyncMock()
+        mock_smtp.return_value = mock_client
+        await cli._cmd_reply(["123"])
+        mock_client.send_email.assert_called_once()
+        kwargs = mock_client.send_email.call_args.kwargs
+        assert kwargs["subject"] == "Re: Hello"
+
+  @pytest.mark.asyncio
+  async def test_reply_command_quotes_original_body(self, mock_account):
+    """
+    Given: Original body is 'Original text'
+    When: Reply body input starts
+    Then: Default body includes quoted original with > prefix
+    """
+    cli = EmailCLI()
+    cli.session.set_account(mock_account)
+    cli.session.set_folder("INBOX")
+    original = {
+      "id": "123",
+      "from": "original@example.com",
+      "subject": "Hello",
+      "body": "Original text",
+      "message_id": "<msg123@example.com>",
+      "references": [],
+    }
+    cli.session.cache_email("123", original)
+    with patch("simple_email_gw.cli.app.get_recipient_whitelist") as mock_wl:
+      mock_wl.return_value.is_allowed.return_value = True
+      mock_wl.return_value.filter_recipients.return_value = (["original@example.com"], [])
+      cli.prompt_session.prompt_async = AsyncMock(side_effect=["Reply text", EOFError(), "y", "y"])
+      with patch.object(cli.session, "get_smtp_client", new_callable=AsyncMock) as mock_smtp:
+        mock_client = AsyncMock()
+        mock_smtp.return_value = mock_client
+        await cli._cmd_reply(["123"])
+        mock_client.send_email.assert_called_once()
+        kwargs = mock_client.send_email.call_args.kwargs
+        assert "> Original text" in kwargs["body"]
+
+  @pytest.mark.asyncio
+  async def test_reply_command_preserves_threading_headers(self, mock_account):
+    """
+    Given: Original email has Message-ID and References
+    When: Reply is sent
+    Then: in_reply_to and references passed to send_email
+    """
+    cli = EmailCLI()
+    cli.session.set_account(mock_account)
+    cli.session.set_folder("INBOX")
+    original = {
+      "id": "123",
+      "from": "original@example.com",
+      "subject": "Hello",
+      "body": "Original text",
+      "message_id": "<msg123@example.com>",
+      "references": ["<ref1@example.com>"],
+    }
+    cli.session.cache_email("123", original)
+    with patch("simple_email_gw.cli.app.get_recipient_whitelist") as mock_wl:
+      mock_wl.return_value.is_allowed.return_value = True
+      mock_wl.return_value.filter_recipients.return_value = (["original@example.com"], [])
+      cli.prompt_session.prompt_async = AsyncMock(side_effect=["", EOFError(), "y", "y"])
+      with patch.object(cli.session, "get_smtp_client", new_callable=AsyncMock) as mock_smtp:
+        mock_client = AsyncMock()
+        mock_smtp.return_value = mock_client
+        await cli._cmd_reply(["123"])
+        mock_client.send_email.assert_called_once()
+        kwargs = mock_client.send_email.call_args.kwargs
+        assert kwargs["in_reply_to"] == "<msg123@example.com>"
+        assert "<msg123@example.com>" in kwargs["references"]
+
+  @pytest.mark.asyncio
+  async def test_reply_command_uses_same_preview_flow(self, mock_account):
+    """
+    Given: User is replying to an email
+    When: Body input completed
+    Then: Same preview/confirm/send flow as write command
+    """
+    cli = EmailCLI()
+    cli.session.set_account(mock_account)
+    cli.session.set_folder("INBOX")
+    original = {
+      "id": "123",
+      "from": "original@example.com",
+      "subject": "Hello",
+      "body": "Original text",
+      "message_id": "<msg123@example.com>",
+      "references": [],
+    }
+    cli.session.cache_email("123", original)
+    with patch("simple_email_gw.cli.app.get_recipient_whitelist") as mock_wl:
+      mock_wl.return_value.is_allowed.return_value = True
+      mock_wl.return_value.filter_recipients.return_value = (["original@example.com"], [])
+      cli.prompt_session.prompt_async = AsyncMock(side_effect=["", EOFError(), "y", "y"])
+      with patch.object(cli.session, "get_smtp_client", new_callable=AsyncMock) as mock_smtp:
+        mock_client = AsyncMock()
+        mock_smtp.return_value = mock_client
+        with patch("simple_email_gw.cli.app.confirm_send", new_callable=AsyncMock) as mock_confirm:
+          mock_confirm.return_value = True
+          await cli._cmd_reply(["123"])
+          mock_confirm.assert_called()
+
+  @pytest.mark.asyncio
+  async def test_reply_command_send_success(self, mock_account):
+    """
+    Given: User confirms reply send
+    When: SMTP send succeeds
+    Then: Success panel displayed
+    """
+    cli = EmailCLI()
+    cli.session.set_account(mock_account)
+    cli.session.set_folder("INBOX")
+    original = {
+      "id": "123",
+      "from": "original@example.com",
+      "subject": "Hello",
+      "body": "Original text",
+      "message_id": "<msg123@example.com>",
+      "references": [],
+    }
+    cli.session.cache_email("123", original)
+    with patch("simple_email_gw.cli.app.get_recipient_whitelist") as mock_wl:
+      mock_wl.return_value.is_allowed.return_value = True
+      mock_wl.return_value.filter_recipients.return_value = (["original@example.com"], [])
+      cli.prompt_session.prompt_async = AsyncMock(side_effect=["", EOFError(), "y", "y"])
+      with patch.object(cli.session, "get_smtp_client", new_callable=AsyncMock) as mock_smtp:
+        mock_client = AsyncMock()
+        mock_smtp.return_value = mock_client
+        with patch("simple_email_gw.cli.app.display_success") as mock_success:
+          await cli._cmd_reply(["123"])
+          mock_success.assert_called_once()
+
+
+  @pytest.mark.asyncio
+  async def test_reply_command_display_name_from_header(self, mock_account):
+    """
+    Given: Original email has From: "John Doe <john@example.com>"
+    When: Reply wizard starts
+    Then: To field pre-populated with bare email john@example.com
+    """
+    cli = EmailCLI()
+    cli.session.set_account(mock_account)
+    cli.session.set_folder("INBOX")
+    original = {
+      "id": "123",
+      "from": "John Doe <john@example.com>",
+      "subject": "Hello",
+      "body": "Original text",
+      "message_id": "<msg123@example.com>",
+      "references": [],
+    }
+    cli.session.cache_email("123", original)
+    with patch("simple_email_gw.cli.app.get_recipient_whitelist") as mock_wl:
+      mock_wl.return_value.is_allowed.return_value = True
+      mock_wl.return_value.filter_recipients.return_value = (["john@example.com"], [])
+      cli.prompt_session.prompt_async = AsyncMock(side_effect=["", EOFError(), "y", "y"])
+      with patch.object(cli.session, "get_smtp_client", new_callable=AsyncMock) as mock_smtp:
+        mock_client = AsyncMock()
+        mock_smtp.return_value = mock_client
+        await cli._cmd_reply(["123"])
+        mock_client.send_email.assert_called_once()
+        kwargs = mock_client.send_email.call_args.kwargs
+        assert kwargs["to"] == ["john@example.com"]
+
+  @pytest.mark.asyncio
+  async def test_reply_command_edit_preserves_user_text(self, mock_account):
+    """
+    Given: User types reply text, chooses edit, then types more
+    When: Reply is sent
+    Then: Body contains both the original and the additional user text
+    """
+    cli = EmailCLI()
+    cli.session.set_account(mock_account)
+    cli.session.set_folder("INBOX")
+    original = {
+      "id": "123",
+      "from": "original@example.com",
+      "subject": "Hello",
+      "body": "Original text",
+      "message_id": "<msg123@example.com>",
+      "references": [],
+    }
+    cli.session.cache_email("123", original)
+    with patch("simple_email_gw.cli.app.get_recipient_whitelist") as mock_wl:
+      mock_wl.return_value.is_allowed.return_value = True
+      mock_wl.return_value.filter_recipients.return_value = (["original@example.com"], [])
+      # First body input, confirm 'e' to edit, second body input, confirm 'y', send anyway 'y'
+      cli.prompt_session.prompt_async = AsyncMock(
+        side_effect=["First part", EOFError(), "e", "Second part", EOFError(), "y", "y"]
+      )
+      with patch.object(cli.session, "get_smtp_client", new_callable=AsyncMock) as mock_smtp:
+        mock_client = AsyncMock()
+        mock_smtp.return_value = mock_client
+        await cli._cmd_reply(["123"])
+        mock_client.send_email.assert_called_once()
+        kwargs = mock_client.send_email.call_args.kwargs
+        assert "First part" in kwargs["body"]
+        assert "Second part" in kwargs["body"]
+        assert "> Original text" in kwargs["body"]
+
+
+class TestWriteCommandMultipleRecipients:
+  """Tests for write command with multiple recipients."""
+
+  @pytest.mark.asyncio
+  async def test_write_command_multiple_space_separated_recipients(self, mock_account):
+    """
+    Given: User runs 'write alice@x.com bob@x.com'
+    When: Email is sent
+    Then: Both recipients are included in the To field
+    """
+    cli = EmailCLI()
+    cli.session.set_account(mock_account)
+    with patch("simple_email_gw.cli.app.get_recipient_whitelist") as mock_wl:
+      mock_wl.return_value.is_allowed.return_value = True
+      mock_wl.return_value.filter_recipients.return_value = (
+        ["alice@x.com", "bob@x.com"],
+        [],
+      )
+      cli.prompt_session.prompt_async = AsyncMock(side_effect=["Subject", "", "", "Body", EOFError(), "y", "y"])
+      with patch.object(cli.session, "get_smtp_client", new_callable=AsyncMock) as mock_smtp:
+        mock_client = AsyncMock()
+        mock_smtp.return_value = mock_client
+        await cli._cmd_write(["alice@x.com", "bob@x.com"])
+        mock_client.send_email.assert_called_once()
+        kwargs = mock_client.send_email.call_args.kwargs
+        assert "alice@x.com" in kwargs["to"]
+        assert "bob@x.com" in kwargs["to"]
+
+  @pytest.mark.asyncio
+  async def test_write_command_crlf_in_subject_rejected(self, mock_account):
+    """
+    Given: User enters a subject with CRLF
+    When: Subject is validated
+    Then: Warning shown and user is re-prompted for subject
+    """
+    cli = EmailCLI()
+    cli.session.set_account(mock_account)
+    with patch("simple_email_gw.cli.app.get_recipient_whitelist") as mock_wl:
+      mock_wl.return_value.is_allowed.return_value = True
+      mock_wl.return_value.filter_recipients.return_value = (["alice@example.com"], [])
+      # First subject has CRLF, second is valid
+      cli.prompt_session.prompt_async = AsyncMock(
+        side_effect=["Bad\r\nSubject", "Valid Subject", "", "", "Body", EOFError(), "y", "y"]
+      )
+      with patch("simple_email_gw.cli.app.display_warning") as mock_warn:
+        with patch.object(cli.session, "get_smtp_client", new_callable=AsyncMock) as mock_smtp:
+          mock_client = AsyncMock()
+          mock_smtp.return_value = mock_client
+          await cli._cmd_write(["alice@example.com"])
+          mock_client.send_email.assert_called_once()
+          kwargs = mock_client.send_email.call_args.kwargs
+          assert kwargs["subject"] == "Valid Subject"
+          # Verify warning was shown for CRLF subject
+          warn_calls = [call for call in mock_warn.call_args_list if "line breaks" in str(call)]
+          assert len(warn_calls) >= 1
+
+
+class TestCompositionSecurity:
+  """Security tests for email composition commands."""
+
+  @pytest.mark.asyncio
+  async def test_crlf_in_recipient_rejected_at_input(self, mock_account):
+    """
+    Given: Recipient contains CRLF
+    When: Entered during compose
+    Then: Rejected immediately with error, does not reach SMTP
+    """
+    cli = EmailCLI()
+    cli.session.set_account(mock_account)
+    with patch("simple_email_gw.cli.app.display_error") as mock_error:
+      await cli._cmd_write(["attacker\r\nBcc: evil@example.com"])
+      mock_error.assert_called()
+
+  @pytest.mark.asyncio
+  async def test_error_messages_do_not_leak_recipients(self, mock_account):
+    """
+    Given: Send fails with WhitelistError or ValueError
+    When: Error is displayed
+    Then: Generic message shown without raw email addresses
+    """
+    cli = EmailCLI()
+    cli.session.set_account(mock_account)
+    with patch("simple_email_gw.cli.app.get_recipient_whitelist") as mock_wl:
+      mock_wl.return_value.is_allowed.return_value = True
+      mock_wl.return_value.filter_recipients.return_value = (["alice@example.com"], [])
+      cli.prompt_session.prompt_async = AsyncMock(side_effect=["Subject", "", "", "Body", EOFError(), "y", "y"])
+      with patch.object(cli.session, "get_smtp_client", new_callable=AsyncMock) as mock_smtp:
+        mock_client = AsyncMock()
+        mock_client.send_email = AsyncMock(side_effect=RuntimeError("SMTP failed"))
+        mock_smtp.return_value = mock_client
+        with patch.object(cli.console, "print") as mock_print:
+          await cli._cmd_write(["alice@example.com"])
+          printed_texts = [str(call[0][0]) for call in mock_print.call_args_list if call[0]]
+          full_output = " ".join(printed_texts)
+          assert "alice@example.com" not in full_output
+
+  @pytest.mark.asyncio
+  async def test_body_size_limit_enforced(self, mock_account):
+    """
+    Given: Body exceeds maximum size
+    When: Entered during compose
+    Then: ValueError raised, error panel shown
+    """
+    cli = EmailCLI()
+    cli.session.set_account(mock_account)
+    with patch("simple_email_gw.cli.app.get_recipient_whitelist") as mock_wl:
+      mock_wl.return_value.is_allowed.return_value = True
+      mock_wl.return_value.filter_recipients.return_value = (["alice@example.com"], [])
+      cli.prompt_session.prompt_async = AsyncMock(side_effect=["Subject", "", ""])
+      with patch("simple_email_gw.cli.app.get_body_input") as mock_body:
+        mock_body.side_effect = ValueError("Body too large")
+        with patch("simple_email_gw.cli.app.display_error") as mock_error:
+          await cli._cmd_write(["alice@example.com"])
+          mock_error.assert_called_once()

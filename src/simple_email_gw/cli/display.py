@@ -6,8 +6,12 @@ various types of content using the Rich library, including tables for lists,
 panels for individual items, and styled messages for errors and success.
 """
 
+from __future__ import annotations
+
+from dataclasses import dataclass, field
 from typing import Any
 
+from prompt_toolkit import PromptSession
 from rich.console import Console
 from rich.panel import Panel
 from rich.syntax import Syntax
@@ -15,6 +19,54 @@ from rich.table import Table
 from rich.text import Text
 
 from simple_email_gw.cli.theme import get_theme_manager
+from simple_email_gw.config import get_recipient_whitelist
+from simple_email_gw.smtp.client import validate_email, WhitelistError
+
+
+# Maximum body size in bytes (10 MB)
+MAX_BODY_SIZE = 10 * 1024 * 1024
+
+
+@dataclass
+class EmailDraft:
+  """Email composition draft state.
+
+  Carries composition state through the multi-step write/reply flow.
+
+  Attributes:
+    to: List of primary recipient email addresses
+    subject: Email subject line
+    body: Email body text
+    cc: Optional list of CC recipients
+    bcc: Optional list of BCC recipients
+    in_reply_to: Message-ID of the original message (for replies)
+    references: List of Message-IDs in the thread history
+    mode: Composition mode, either "compose" or "reply"
+  """
+
+  to: list[str]
+  subject: str
+  body: str = ""
+  cc: list[str] = field(default_factory=list)
+  bcc: list[str] = field(default_factory=list)
+  in_reply_to: str | None = None
+  references: list[str] = field(default_factory=list)
+  mode: str = "compose"  # "compose" or "reply"
+
+  def to_preview_dict(self) -> dict[str, str]:
+    """Convert draft to preview dictionary for display.
+
+    Returns:
+      Dictionary with formatted to, cc, bcc, subject, body fields.
+    """
+    return {
+      "to": ", ".join(self.to) if self.to else "(none)",
+      "cc": ", ".join(self.cc) if self.cc else "(none)",
+      "bcc": ", ".join(self.bcc) if self.bcc else "(none)",
+      "subject": self.subject if self.subject else "(no subject)",
+      "body": self.body,
+      "mode": self.mode,
+    }
 
 
 def display_accounts(console: Console, accounts: list[dict[str, Any]]) -> None:
@@ -251,75 +303,172 @@ def display_warning(console: Console, message: str) -> None:
   console.print(panel)
 
 
-def get_recipients_input(console: Console, prompt: str) -> list[str]:
-  """
-  Interactive input for email recipients with validation.
+async def get_recipients_input(
+  console: Console,
+  prompt: str,
+  session: PromptSession | None = None,
+) -> list[str]:
+  """Interactive async input for email recipients with validation.
+
+  Validates each recipient email address and checks whitelist restrictions.
+  Handles comma-separated input and returns empty list for optional fields.
 
   Args:
-      console: Rich Console instance for output
-      prompt: Prompt message for input
+    console: Rich Console instance for output
+    prompt: Prompt message for input
+    session: Optional PromptSession for async input
 
   Returns:
-      List of validated recipient email addresses
+    List of validated recipient email addresses
+
+  Raises:
+    ValueError: If any email address is invalid
+    WhitelistError: If any recipient is blocked by whitelist
   """
   console.print(f"[bold]{prompt}[/bold]")
   console.print("[dim]Enter comma-separated recipient email addresses:[/dim]")
 
   # Read input line
   try:
-    user_input = input()
-    # Parse comma-separated emails
-    recipients = [email.strip() for email in user_input.split(",") if email.strip()]
-    return recipients
+    if session is not None:
+      user_input = await session.prompt_async("")
+    else:
+      user_input = input()
   except EOFError:
     return []
 
+  # Parse comma-separated emails
+  raw_recipients = [email.strip() for email in user_input.split(",") if email.strip()]
 
-def get_body_input(console: Console, prompt: str) -> str:
-  """
-  Multi-line body input terminated by Ctrl+D (EOF).
+  if not raw_recipients:
+    return []
+
+  # Validate each email address
+  for addr in raw_recipients:
+    validate_email(addr)
+
+  # Check recipient whitelist
+  whitelist = get_recipient_whitelist()
+  allowed, blocked = whitelist.filter_recipients(raw_recipients)
+
+  if blocked:
+    raise WhitelistError(f"Recipients not in whitelist: {', '.join(blocked)}")
+
+  return allowed
+
+
+async def get_body_input(
+  console: Console,
+  prompt: str,
+  session: PromptSession | None = None,
+) -> str:
+  """Multi-line body input terminated by Ctrl+D (EOF).
+
+  Collects text line by line until EOFError (Ctrl+D) is received.
+  Enforces a maximum body size of 10 MB.
 
   Args:
-      console: Rich Console instance for output
-      prompt: Prompt message for input
+    console: Rich Console instance for output
+    prompt: Prompt message for input
+    session: Optional PromptSession for async input
 
   Returns:
-      Multi-line email body text
+    Multi-line email body text
+
+  Raises:
+    ValueError: If body exceeds the maximum size limit
   """
   console.print(f"[bold]{prompt}[/bold]")
   console.print("[dim]Enter body text. Press Ctrl+D when done.[/dim]")
 
   lines = []
+  total_bytes = 0
   try:
     while True:
-      line = input()
+      if session is not None:
+        line = await session.prompt_async("")
+      else:
+        line = input()
       lines.append(line)
+      total_bytes += len(line.encode("utf-8")) + 1  # +1 for newline
+      if total_bytes > MAX_BODY_SIZE:
+        raise ValueError(
+          f"Body exceeds maximum size of {MAX_BODY_SIZE / (1024 * 1024):.0f} MB"
+        )
   except EOFError:
     # Ctrl+D pressed
     pass
+  except KeyboardInterrupt:
+    # Ctrl+C - re-raise to allow caller to handle cancellation
+    raise
 
   return "\n".join(lines)
 
 
-def confirm_send(console: Console, preview: dict[str, Any]) -> bool:
-  """
-  Display email preview and confirm sending.
+async def confirm_send(
+  console: Console,
+  draft: EmailDraft,
+  session: PromptSession | None = None,
+  from_addr: str = "",
+) -> bool | None:
+  """Display email preview and confirm sending with 3-state return.
+
+  Displays a Rich Table with metadata (From, To, CC, BCC, Subject) and a
+  truncated body preview (first 500 characters with continuation note).
 
   Args:
-      console: Rich Console instance for output
-      preview: Email preview dictionary with to, subject, body fields
+    console: Rich Console instance for output
+    draft: EmailDraft to preview
+    session: Optional PromptSession for async input
+    from_addr: Sender email address for the From field
 
   Returns:
-      True if user confirms sending, False otherwise
+    True if user confirms sending, False if user declines, None if user
+    chooses to edit the body.
   """
-  console.print("\n[bold]Preview:[/bold]")
-  console.print(f"  To: {', '.join(preview.get('to', []))}")
-  console.print(f"  Subject: {preview.get('subject', '')}")
-  console.print(f"  Body:\n{preview.get('body', '')}")
-  console.print("\n[bold]Send this email? (y/n)[/bold]")
+  theme = get_theme_manager().theme
+
+  # Build metadata table
+  table = Table(title="Email Preview")
+  table.add_column("Field", style=theme.account_name)
+  table.add_column("Value")
+
+  preview = draft.to_preview_dict()
+  table.add_row("From", from_addr if from_addr else "(unknown)")
+  table.add_row("To", preview.get("to", "(none)"))
+  table.add_row("CC", preview.get("cc", "(none)"))
+  table.add_row("BCC", preview.get("bcc", "(none)"))
+  table.add_row("Subject", preview.get("subject", "(no subject)"))
+
+  console.print(table)
+
+  # Truncate body preview to 500 chars
+  body_preview = draft.body
+  if len(body_preview) > 500:
+    remaining = len(body_preview) - 500
+    body_preview = body_preview[:500]
+    console.print(f"\n{body_preview}")
+    console.print(f"[dim]... ({remaining} more characters)[/dim]")
+  else:
+    console.print(f"\n{body_preview}")
+
+  console.print("\n[bold]Send email? (y/n/e): [/bold]")
 
   try:
-    response = input().strip().lower()
-    return response == "y" or response == "yes"
+    if session is not None:
+      response = await session.prompt_async("")
+    else:
+      response = input()
+    response = response.strip().lower()
+    if response in ("y", "yes"):
+      return True
+    if response in ("n", "no"):
+      return False
+    if response in ("e", "edit"):
+      return None
+    # Default to False for unrecognized input
+    return False
   except EOFError:
     return False
+  except KeyboardInterrupt:
+    raise

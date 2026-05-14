@@ -241,78 +241,107 @@
 
 ### Phase 4: Email Composition Commands
 
-- [ ] **4.1: Implement write command - core flow**
-  - Location: `src/simple_email_gw/cli/commands.py`
-  - Function: `async cmd_write(cli: EmailCLI, recipient: str)`
+- [x] **4.1: Implement write command - core flow**
+  - Location: `src/simple_email_gw/cli/app.py`
+  - UX Design: See `analysis/ux-email-composition.md` Section 1
+  - Function: `async _cmd_write(self, args: list[str])`
   - Behavior:
-    - Check session has active account
-    - Parse recipient list (comma-separated)
-    - Validate each recipient using `validate_email()` from smtp/client.py
-    - Check whitelist using `get_recipient_whitelist().is_allowed()`
-    - Prompt for subject using `prompt_toolkit`
-    - Prompt for CC recipients (optional, press Enter to skip)
-    - Prompt for BCC recipients (optional, press Enter to skip)
-    - Prompt for body with Ctrl+D to finish
-  - Body input:
-    - Display: "Enter email body. Press Ctrl+D when done:"
-    - Collect lines until EOF (Ctrl+D)
-    - Handle empty body: ask for confirmation
+    - Check session has active account; if not, `display_error()` with suggestion
+    - Parse primary recipients from args (comma-separated via shlex)
+    - Validate each recipient using `validate_email()`; check whitelist
+    - Prompt for subject; allow empty but show `display_warning()`
+    - Prompt for CC recipients (optional, Enter to skip); validate and whitelist-check; re-prompt on invalid input
+    - Prompt for BCC recipients (optional, Enter to skip); same validation behavior
+    - Collect multi-line body via `get_body_input()`; Ctrl+D to finish
+    - Handle empty body: warn and ask "Send anyway? (y/n)"
+    - Handle Ctrl+C at any step: cancel compose, print "[dim]Compose cancelled.[/dim]", return to REPL
   - Integration:
     - Use `session.get_smtp_client()` to get SMTP client
     - Call `client.send_email(to, subject, body, cc, bcc)`
+  - Acceptance Criteria:
+    - `write alice@example.com,bob@example.com` starts the wizard
+    - Invalid primary recipient aborts to REPL with error panel
+    - Invalid CC/BCC re-prompts that field only, does not abort entire flow
+    - Empty subject proceeds with warning panel
+    - Empty body shows warning + confirmation before preview
+    - Ctrl+C at any prompt cancels compose and returns to REPL
+    - Body input supports multi-line text terminated by Ctrl+D
 
-- [ ] **4.2: Implement write command - preview and confirmation**
-  - Location: `src/simple_email_gw/cli/commands.py`
-  - Add to `cmd_write`:
-    - After body input, display preview:
-      - Recipients in table format
-      - Subject
-      - Body preview (first 500 chars)
+- [x] **4.2: Implement write command - preview and confirmation**
+  - Location: `src/simple_email_gw/cli/app.py`
+  - UX Design: See `analysis/ux-email-composition.md` Section 2
+  - Add to `_cmd_write` after body collection:
+    - Display preview using `confirm_send()` utility:
+      - Metadata table (From, To, CC, BCC, Subject) with field labels in `theme.secondary`
+      - Body preview Panel with first 500 chars; append `... (N more characters)` if truncated
     - Prompt: "Send email? (y/n/e): "
-      - 'y' - send immediately
-      - 'n' - cancel operation
-      - 'e' - edit (return to body input)
-    - On send:
-      - Display Rich spinner: "Sending email..."
-      - On success: display success panel with recipients
-      - On error: display error panel with details
+      - `y`/`yes`: send with Rich spinner "Sending email..."
+      - `n`/`no`: discard; print "[dim]Email discarded.[/dim]"
+      - `e`/`edit`: return to body input with existing text preserved
+      - Invalid input: re-prompt
+    - On send success: `display_success()` with recipient list
+    - On send failure: `display_error()` with actionable suggestion
+  - Acceptance Criteria:
+    - Preview screen is scannable and fits terminals down to 40 columns
+    - Body preview truncates at 500 chars with a dim continuation note
+    - Confirmation accepts y/n/e and handles case-insensitive input
+    - Edit option returns user to body input without losing prior text
+    - Spinner appears during SMTP operation
+    - Success/error panels use existing theme colors consistently
 
-- [ ] **4.3: Implement reply command**
-  - Location: `src/simple_email_gw/cli/commands.py`
-  - Function: `async cmd_reply(cli: EmailCLI, message_id: str)`
+- [x] **4.3: Implement reply command**
+  - Location: `src/simple_email_gw/cli/app.py`
+  - UX Design: See `analysis/ux-email-composition.md` Section 3
+  - Function: `async _cmd_reply(self, args: list[str])`
   - Behavior:
-    - Fetch original email
-    - Pre-populate To field from original From
-    - Pre-populate Subject with "Re: {original_subject}" (avoid double "Re:")
-    - Quote original body with ">" prefix
-    - Include In-Reply-To and References headers
-    - Prompt for body with quoted original
-    - Preview and confirmation same as write command
+    - Check session has active account
+    - Validate message_id is numeric; if not, `display_error()`
+    - Fetch original email (use session cache first; else IMAP fetch with spinner)
+    - If not found: `display_error()` suggesting `ls`
+    - Display "Replying to" context panel with From, Subject, Date
+    - Pre-populate To from original From
+    - Pre-populate Subject with "Re: {original_subject}"; avoid double "Re:" prefix
+    - Display quoted original body above input area using `theme.secondary` for quote lines
+    - Collect reply body via `get_body_input()`
+    - Preview and confirmation identical to write command (`confirm_send()`)
   - Integration:
-    - Use `client.reply_email()` from SMTP client
-    - Pass `in_reply_to` and `references` headers
+    - Use `session.get_smtp_client()` and `client.reply_email()`
+    - Pass `in_reply_to` and `references` from original message headers
+  - Acceptance Criteria:
+    - Context panel appears before body input so user remembers the original email
+    - Quoted original body is displayed as read-only context, not sent verbatim (send only user-typed text)
+    - Subject deduplication prevents "Re: Re:" prefixes
+    - Preview/confirmation behavior matches write command exactly
+    - Ctrl+C cancels compose; invalid message ID returns to REPL with error
 
-- [ ] **4.4: Implement recipient input utilities**
+- [x] **4.4: Implement reusable input utilities for composition**
   - Location: `src/simple_email_gw/cli/display.py`
-  - Function: `async get_recipients_input(cli: EmailCLI, prompt: str) -> list[str]`
-  - Behavior:
-    - Display prompt
-    - Accept comma-separated email addresses
-    - Validate each address
-    - Check whitelist
-    - Return list of valid recipients
-    - Display error for invalid addresses
-  - Function: `async get_body_input(cli: EmailCLI) -> str`
-  - Behavior:
-    - Display: "Enter email body. Press Ctrl+D when done:"
-    - Read lines until EOF (Ctrl+D)
-    - Return collected body text
-    - Handle Ctrl+C to cancel
-  - Function: `async confirm_send(cli: EmailCLI) -> bool`
-  - Behavior:
-    - Display preview
-    - Prompt: "Send email? (y/n/e): "
-    - Return True for 'y', False for 'n', None for 'e' (edit)
+  - UX Design: See `analysis/ux-email-composition.md` Sections 1, 4, 5
+  - Function: `get_recipients_input(console: Console, prompt: str) -> list[str]`
+    - Display prompt and dim hint "Enter comma-separated email addresses:"
+    - Read one line via `input()`
+    - Parse comma-separated values, strip whitespace
+    - Validate each with `validate_email()`
+    - Check whitelist; if any blocked, show error and return empty list so caller can re-prompt
+    - Return list of valid addresses
+    - Handle EOFError (Ctrl+D) -> return empty list
+  - Function: `get_body_input(console: Console, prompt: str = "Enter email body. Press Ctrl+D when done.") -> str`
+    - Display prompt and dim hint
+    - Read lines via `input()` until EOFError (Ctrl+D)
+    - Handle KeyboardInterrupt -> re-raise so caller can cancel compose
+    - Return joined lines
+  - Function: `confirm_send(console: Console, preview: dict[str, Any]) -> str`
+    - Display metadata table and body preview panel per UX spec
+    - Prompt "Send email? (y/n/e): " via `input()`
+    - Return normalized response: "y", "n", or "e"
+    - Handle EOFError -> return "n"
+    - Handle KeyboardInterrupt -> re-raise
+  - Acceptance Criteria:
+    - Utilities are theme-aware where applicable (preview uses `theme.secondary` for labels)
+    - `get_recipients_input` returns only fully validated and whitelisted addresses
+    - `get_body_input` supports Ctrl+D termination and propagates Ctrl+C
+    - `confirm_send` returns a three-state response (y/n/e) and renders preview consistently
+    - All utilities use plain `input()` to avoid `prompt_toolkit` nesting issues
 
 ### Phase 5: Additional Email Commands
 
