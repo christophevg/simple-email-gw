@@ -1004,7 +1004,7 @@ class EmailCLI:
     )
 
   async def _cmd_delete(self, args: list[str]) -> None:
-    """Delete email (placeholder)."""
+    """Delete an email message."""
     if not self.session.current_account:
       display_error(
         self.console,
@@ -1013,14 +1013,53 @@ class EmailCLI:
       )
       return
 
-    display_error(
-      self.console,
-      "Command not implemented yet",
-      "This command will be implemented in a future task",
-    )
+    if len(args) == 0:
+      display_error(self.console, "Missing message ID", "Usage: delete <message_id>")
+      return
+
+    message_id = args[0]
+
+    if not message_id.isdigit():
+      display_error(
+        self.console,
+        "Invalid message ID",
+        "Message ID must be a number. Use 'ls' to list messages.",
+      )
+      return
+
+    try:
+      response = await self.prompt_session.prompt_async(f"Delete message {message_id}? (y/n): ")
+    except (EOFError, KeyboardInterrupt):
+      self.console.print("\n[dim]Delete cancelled.[/dim]")
+      return
+
+    if response.lower() not in ("y", "yes"):
+      self.console.print("[dim]Delete cancelled.[/dim]")
+      return
+
+    try:
+      client = await self.session.get_imap_client()
+      await client.delete_message(message_id, folder=self.session.current_folder)
+    except KeyboardInterrupt:
+      self.console.print("\n[dim]Operation cancelled.[/dim]")
+      return
+    except ValueError as e:
+      display_error(self.console, "Invalid message ID", str(e))
+      return
+    except RuntimeError as e:
+      display_error(self.console, "Failed to delete message", str(e))
+      return
+    except Exception:
+      display_error(self.console, "Failed to delete message", "Check connection and try again")
+      return
+
+    if message_id in self.session._email_cache:
+      del self.session._email_cache[message_id]
+
+    display_success(self.console, f"Message {message_id} deleted")
 
   async def _cmd_move(self, args: list[str]) -> None:
-    """Move email (placeholder)."""
+    """Move an email message to another folder."""
     if not self.session.current_account:
       display_error(
         self.console,
@@ -1029,11 +1068,63 @@ class EmailCLI:
       )
       return
 
-    display_error(
-      self.console,
-      "Command not implemented yet",
-      "This command will be implemented in a future task",
-    )
+    if len(args) < 2:
+      display_error(self.console, "Missing arguments", "Usage: move <message_id> <folder>")
+      return
+
+    message_id = args[0]
+    dest_folder = args[1]
+
+    if not message_id.isdigit():
+      display_error(
+        self.console,
+        "Invalid message ID",
+        "Message ID must be a number. Use 'ls' to list messages.",
+      )
+      return
+
+    try:
+      response = await self.prompt_session.prompt_async(
+        f"Move message {message_id} to {dest_folder}? (y/n): "
+      )
+    except (EOFError, KeyboardInterrupt):
+      self.console.print("\n[dim]Move cancelled.[/dim]")
+      return
+
+    if response.lower() not in ("y", "yes"):
+      self.console.print("[dim]Move cancelled.[/dim]")
+      return
+
+    try:
+      client = await self.session.get_imap_client()
+      folders = await client.list_folders()
+
+      if not any(f.get("name") == dest_folder for f in folders):
+        display_error(
+          self.console,
+          f"Folder '{dest_folder}' not found",
+          "Use 'folders' to list available folders",
+        )
+        return
+
+      await client.move_message(message_id, self.session.current_folder, dest_folder)
+    except KeyboardInterrupt:
+      self.console.print("\n[dim]Operation cancelled.[/dim]")
+      return
+    except ValueError as e:
+      display_error(self.console, "Invalid message ID or folder", str(e))
+      return
+    except RuntimeError as e:
+      display_error(self.console, "Failed to move message", str(e))
+      return
+    except Exception:
+      display_error(self.console, "Failed to move message", "Check connection and try again")
+      return
+
+    if message_id in self.session._email_cache:
+      del self.session._email_cache[message_id]
+
+    display_success(self.console, f"Message {message_id} moved to {dest_folder}")
 
   def _handle_exception(self, e: Exception) -> None:
     """Handle exceptions with appropriate error messages.

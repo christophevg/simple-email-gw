@@ -4,7 +4,7 @@
 
 ### MCP Server Enhancement
 
-- [ ] **MCP-001: Add create_folder tool**
+- [x] **MCP-001: Add create_folder tool**
   - Location: `src/simple_email_gw/mcp/tools/`
   - Add `create_folder` MCP tool that wraps IMAP's `CREATE` command
   - Tool signature: `create_folder(account: str, folder_name: str) -> dict`
@@ -356,35 +356,17 @@
 
 ### Phase 5: Additional Email Commands
 
-- [ ] **5.1: Implement delete command**
-  - Location: `src/simple_email_gw/cli/commands.py`
-  - Function: `async cmd_delete(cli: EmailCLI, message_id: str)`
-  - Behavior:
-    - Check session has active account
-    - Confirm: "Delete message {message_id}? (y/n): "
-    - Use `session.get_imap_client()` to get client
-    - Call `client.delete_message(message_id, folder=session.current_folder)`
-    - Clear message from cache
-    - Display success message
-  - Error handling:
-    - Invalid message ID: display error
-    - No account selected: display error
+- [x] **5.1: Implement delete command**
+  - Location: `src/simple_email_gw/cli/app.py`
+  - Implemented `_cmd_delete` with confirmation prompt, IMAP delete, cache clear, success display
+  - Security: numeric message ID validation, async prompt with KeyboardInterrupt handling
+  - **Completed**: 2026-05-16
 
-- [ ] **5.2: Implement move command**
-  - Location: `src/simple_email_gw/cli/commands.py`
-  - Function: `async cmd_move(cli: EmailCLI, message_id: str, dest_folder: str)`
-  - Behavior:
-    - Check session has active account
-    - Validate destination folder exists
-    - Confirm: "Move message {message_id} to {dest_folder}? (y/n): "
-    - Use `session.get_imap_client()` to get client
-    - Call `client.move_message(message_id, session.current_folder, dest_folder)`
-    - Clear message from cache
-    - Display success message
-  - Error handling:
-    - Invalid message ID: display error
-    - Invalid folder: display error with folder list
-    - No account selected: display error
+- [x] **5.2: Implement move command**
+  - Location: `src/simple_email_gw/cli/app.py`
+  - Implemented `_cmd_move` with folder validation, confirmation prompt, IMAP move, cache clear, success display
+  - Security: numeric message ID validation, async prompt with KeyboardInterrupt handling
+  - **Completed**: 2026-05-16
 
 ### Phase 6: Session & Utility Commands
 

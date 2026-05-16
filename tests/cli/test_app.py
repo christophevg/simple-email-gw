@@ -2258,3 +2258,384 @@ class TestCompositionSecurity:
         with patch("simple_email_gw.cli.app.display_error") as mock_error:
           await cli._cmd_write(["alice@example.com"])
           mock_error.assert_called_once()
+
+
+class TestDeleteCommand:
+  """Tests for the delete email command."""
+
+  @pytest.mark.asyncio
+  async def test_delete_no_account(self):
+    """
+    Given: No account is selected
+    When: User runs 'delete 123'
+    Then: display_error is called with "No account selected" and usage suggestion
+    """
+    cli = EmailCLI()
+    with patch("simple_email_gw.cli.app.display_error") as mock_error:
+      await cli._cmd_delete(["123"])
+      mock_error.assert_called_once()
+      assert mock_error.call_args[0][1] == "No account selected"
+
+  @pytest.mark.asyncio
+  async def test_delete_no_message_id(self, mock_account):
+    """
+    Given: Account is selected but no message ID is provided
+    When: User runs 'delete' with no arguments
+    Then: display_error is called with "Missing message ID" and usage suggestion
+    """
+    cli = EmailCLI()
+    cli.session.set_account(mock_account)
+    with patch("simple_email_gw.cli.app.display_error") as mock_error:
+      await cli._cmd_delete([])
+      mock_error.assert_called_once()
+      assert mock_error.call_args[0][1] == "Missing message ID"
+
+  @pytest.mark.asyncio
+  async def test_delete_cancelled(self, mock_account):
+    """
+    Given: Account is selected and message ID is provided
+    When: User runs 'delete 123' and confirms 'n'
+    Then: "[dim]Delete cancelled.[/dim]" is printed and no IMAP call is made
+    """
+    cli = EmailCLI()
+    cli.session.set_account(mock_account)
+    with patch.object(cli.prompt_session, "prompt_async", new_callable=AsyncMock, return_value="n"):
+      with patch.object(cli.session, "get_imap_client", new_callable=AsyncMock) as mock_imap:
+        with patch.object(cli.console, "print") as mock_print:
+          with patch("simple_email_gw.cli.app.display_error") as mock_error:
+            with patch("simple_email_gw.cli.app.display_success") as mock_success:
+              await cli._cmd_delete(["123"])
+              mock_print.assert_called_once_with("[dim]Delete cancelled.[/dim]")
+              mock_imap.assert_not_called()
+              mock_error.assert_not_called()
+              mock_success.assert_not_called()
+
+  @pytest.mark.asyncio
+  async def test_delete_non_numeric_message_id(self, mock_account):
+    """
+    Given: Account is selected but message ID is non-numeric
+    When: User runs 'delete abc'
+    Then: display_error is called with "Invalid message ID" and no prompt is shown
+    """
+    cli = EmailCLI()
+    cli.session.set_account(mock_account)
+    with patch.object(cli.prompt_session, "prompt_async", new_callable=AsyncMock) as mock_prompt:
+      with patch("simple_email_gw.cli.app.display_error") as mock_error:
+        await cli._cmd_delete(["abc"])
+        mock_error.assert_called_once()
+        assert mock_error.call_args[0][1] == "Invalid message ID"
+        assert (
+          mock_error.call_args[0][2] == "Message ID must be a number. Use 'ls' to list messages."
+        )
+        mock_prompt.assert_not_called()
+
+  @pytest.mark.asyncio
+  async def test_delete_success(self, mock_account):
+    """
+    Given: Account is selected and message ID is provided
+    When: User runs 'delete 123' and confirms 'y'
+    Then: client.delete_message is called, cache is cleared, and display_success is shown
+    """
+    cli = EmailCLI()
+    cli.session.set_account(mock_account)
+    cli.session.cache_email("123", {"id": "123", "subject": "Test"})
+    with patch.object(cli.prompt_session, "prompt_async", new_callable=AsyncMock, return_value="y"):
+      with patch.object(cli.session, "get_imap_client", new_callable=AsyncMock) as mock_imap:
+        mock_client = AsyncMock()
+        mock_client.delete_message = AsyncMock(return_value=True)
+        mock_imap.return_value = mock_client
+        with patch("simple_email_gw.cli.app.display_success") as mock_success:
+          with patch("simple_email_gw.cli.app.display_error") as mock_error:
+            await cli._cmd_delete(["123"])
+            mock_client.delete_message.assert_called_once_with(
+              "123", folder=cli.session.current_folder
+            )
+            assert "123" not in cli.session._email_cache
+            mock_success.assert_called_once()
+            assert mock_success.call_args[0][1] == "Message 123 deleted"
+            mock_error.assert_not_called()
+
+  @pytest.mark.asyncio
+  async def test_delete_invalid_message_id(self, mock_account):
+    """
+    Given: Account is selected and message ID is provided
+    When: User confirms 'y' but delete_message raises ValueError
+    Then: display_error is called with "Failed to delete message" and the exception text
+    """
+    cli = EmailCLI()
+    cli.session.set_account(mock_account)
+    with patch.object(cli.prompt_session, "prompt_async", new_callable=AsyncMock, return_value="y"):
+      with patch.object(cli.session, "get_imap_client", new_callable=AsyncMock) as mock_imap:
+        mock_client = AsyncMock()
+        mock_client.delete_message = AsyncMock(side_effect=ValueError("Invalid message ID"))
+        mock_imap.return_value = mock_client
+        with patch("simple_email_gw.cli.app.display_error") as mock_error:
+          await cli._cmd_delete(["123"])
+          mock_error.assert_called_once()
+          assert mock_error.call_args[0][1] == "Invalid message ID"
+          assert mock_error.call_args[0][2] == "Invalid message ID"
+
+  @pytest.mark.asyncio
+  async def test_delete_imap_error(self, mock_account):
+    """
+    Given: Account is selected and message ID is provided
+    When: User confirms 'y' but delete_message raises RuntimeError
+    Then: display_error is called with "Failed to delete message" and the exception text
+    """
+    cli = EmailCLI()
+    cli.session.set_account(mock_account)
+    with patch.object(cli.prompt_session, "prompt_async", new_callable=AsyncMock, return_value="y"):
+      with patch.object(cli.session, "get_imap_client", new_callable=AsyncMock) as mock_imap:
+        mock_client = AsyncMock()
+        mock_client.delete_message = AsyncMock(side_effect=RuntimeError("IMAP error"))
+        mock_imap.return_value = mock_client
+        with patch("simple_email_gw.cli.app.display_error") as mock_error:
+          await cli._cmd_delete(["123"])
+          mock_error.assert_called_once()
+          assert mock_error.call_args[0][1] == "Failed to delete message"
+          assert mock_error.call_args[0][2] == "IMAP error"
+
+  @pytest.mark.asyncio
+  async def test_delete_keyboard_interrupt_during_prompt(self, mock_account):
+    """
+    Given: Account is selected and message ID is provided
+    When: User presses Ctrl+C at the confirmation prompt
+    Then: "Delete cancelled." is printed and no IMAP call is made
+    """
+    cli = EmailCLI()
+    cli.session.set_account(mock_account)
+    with patch.object(
+      cli.prompt_session, "prompt_async", new_callable=AsyncMock, side_effect=KeyboardInterrupt()
+    ):
+      with patch.object(cli.session, "get_imap_client", new_callable=AsyncMock) as mock_imap:
+        with patch.object(cli.console, "print") as mock_print:
+          with patch("simple_email_gw.cli.app.display_error") as mock_error:
+            with patch("simple_email_gw.cli.app.display_success") as mock_success:
+              await cli._cmd_delete(["123"])
+              mock_print.assert_called_once_with("\n[dim]Delete cancelled.[/dim]")
+              mock_imap.assert_not_called()
+              mock_error.assert_not_called()
+              mock_success.assert_not_called()
+
+  @pytest.mark.asyncio
+  async def test_delete_keyboard_interrupt_during_imap(self, mock_account):
+    """
+    Given: Account is selected and message ID is provided, user confirms 'y'
+    When: User presses Ctrl+C during the IMAP operation
+    Then: "Operation cancelled." is printed
+    """
+    cli = EmailCLI()
+    cli.session.set_account(mock_account)
+    with patch.object(cli.prompt_session, "prompt_async", new_callable=AsyncMock, return_value="y"):
+      with patch.object(
+        cli.session, "get_imap_client", new_callable=AsyncMock, side_effect=KeyboardInterrupt()
+      ):
+        with patch.object(cli.console, "print") as mock_print:
+          with patch("simple_email_gw.cli.app.display_error") as mock_error:
+            with patch("simple_email_gw.cli.app.display_success") as mock_success:
+              await cli._cmd_delete(["123"])
+              mock_print.assert_called_once_with("\n[dim]Operation cancelled.[/dim]")
+              mock_error.assert_not_called()
+              mock_success.assert_not_called()
+
+
+class TestMoveCommand:
+  """Tests for the move email command."""
+
+  @pytest.mark.asyncio
+  async def test_move_no_account(self):
+    """
+    Given: No account is selected
+    When: User runs 'move 123 Sent'
+    Then: display_error is called with "No account selected" and usage suggestion
+    """
+    cli = EmailCLI()
+    with patch("simple_email_gw.cli.app.display_error") as mock_error:
+      await cli._cmd_move(["123", "Sent"])
+      mock_error.assert_called_once()
+      assert mock_error.call_args[0][1] == "No account selected"
+
+  @pytest.mark.asyncio
+  async def test_move_missing_args(self, mock_account):
+    """
+    Given: Account is selected but message ID or destination folder is missing
+    When: User runs 'move' with insufficient arguments
+    Then: display_error is called with "Missing arguments" and usage suggestion
+    """
+    cli = EmailCLI()
+    cli.session.set_account(mock_account)
+    with patch("simple_email_gw.cli.app.display_error") as mock_error:
+      await cli._cmd_move([])
+      mock_error.assert_called_once()
+      assert mock_error.call_args[0][1] == "Missing arguments"
+
+  @pytest.mark.asyncio
+  async def test_move_non_numeric_message_id(self, mock_account):
+    """
+    Given: Account is selected but message ID is non-numeric
+    When: User runs 'move abc Sent'
+    Then: display_error is called with "Invalid message ID" and no prompt is shown
+    """
+    cli = EmailCLI()
+    cli.session.set_account(mock_account)
+    with patch.object(cli.prompt_session, "prompt_async", new_callable=AsyncMock) as mock_prompt:
+      with patch("simple_email_gw.cli.app.display_error") as mock_error:
+        await cli._cmd_move(["abc", "Sent"])
+        mock_error.assert_called_once()
+        assert mock_error.call_args[0][1] == "Invalid message ID"
+        assert (
+          mock_error.call_args[0][2] == "Message ID must be a number. Use 'ls' to list messages."
+        )
+        mock_prompt.assert_not_called()
+
+  @pytest.mark.asyncio
+  async def test_move_folder_not_found(self, mock_account):
+    """
+    Given: Account is selected and message ID is provided
+    When: User runs 'move 123 Sent' but 'Sent' is not in list_folders results
+    Then: display_error is called with "Folder not found" and available folders suggestion
+    """
+    cli = EmailCLI()
+    cli.session.set_account(mock_account)
+    with patch.object(cli.prompt_session, "prompt_async", new_callable=AsyncMock, return_value="y"):
+      with patch.object(cli.session, "get_imap_client", new_callable=AsyncMock) as mock_imap:
+        mock_client = AsyncMock()
+        mock_client.list_folders = AsyncMock(return_value=[{"name": "INBOX"}, {"name": "Trash"}])
+        mock_imap.return_value = mock_client
+        with patch("simple_email_gw.cli.app.display_error") as mock_error:
+          await cli._cmd_move(["123", "Sent"])
+          mock_error.assert_called_once()
+          assert "Folder 'Sent' not found" in mock_error.call_args[0][1]
+          assert "Use 'folders' to list available folders" == mock_error.call_args[0][2]
+
+  @pytest.mark.asyncio
+  async def test_move_cancelled(self, mock_account):
+    """
+    Given: Account is selected, message ID and valid destination folder are provided
+    When: User runs 'move 123 Sent' and confirms 'n'
+    Then: "[dim]Move cancelled.[/dim]" is printed and no IMAP call is made
+    """
+    cli = EmailCLI()
+    cli.session.set_account(mock_account)
+    with patch.object(cli.prompt_session, "prompt_async", new_callable=AsyncMock, return_value="n"):
+      with patch.object(cli.session, "get_imap_client", new_callable=AsyncMock) as mock_imap:
+        with patch.object(cli.console, "print") as mock_print:
+          with patch("simple_email_gw.cli.app.display_error") as mock_error:
+            with patch("simple_email_gw.cli.app.display_success") as mock_success:
+              await cli._cmd_move(["123", "Sent"])
+              mock_print.assert_called_once_with("[dim]Move cancelled.[/dim]")
+              mock_imap.assert_not_called()
+              mock_error.assert_not_called()
+              mock_success.assert_not_called()
+
+  @pytest.mark.asyncio
+  async def test_move_success(self, mock_account):
+    """
+    Given: Account is selected, message ID and valid destination folder are provided
+    When: User runs 'move 123 Sent' and confirms 'y'
+    Then: client.move_message is called, cache is cleared, and display_success is shown
+    """
+    cli = EmailCLI()
+    cli.session.set_account(mock_account)
+    cli.session.cache_email("123", {"id": "123", "subject": "Test"})
+    with patch.object(cli.prompt_session, "prompt_async", new_callable=AsyncMock, return_value="y"):
+      with patch.object(cli.session, "get_imap_client", new_callable=AsyncMock) as mock_imap:
+        mock_client = AsyncMock()
+        mock_client.list_folders = AsyncMock(return_value=[{"name": "INBOX"}, {"name": "Sent"}])
+        mock_client.move_message = AsyncMock(return_value=True)
+        mock_imap.return_value = mock_client
+        with patch("simple_email_gw.cli.app.display_success") as mock_success:
+          with patch("simple_email_gw.cli.app.display_error") as mock_error:
+            await cli._cmd_move(["123", "Sent"])
+            mock_client.move_message.assert_called_once_with(
+              "123", cli.session.current_folder, "Sent"
+            )
+            assert "123" not in cli.session._email_cache
+            mock_success.assert_called_once()
+            assert mock_success.call_args[0][1] == "Message 123 moved to Sent"
+            mock_error.assert_not_called()
+
+  @pytest.mark.asyncio
+  async def test_move_invalid_message_id(self, mock_account):
+    """
+    Given: Account is selected, message ID and valid destination folder are provided
+    When: User confirms 'y' but move_message raises ValueError
+    Then: display_error is called with "Failed to move message" and the exception text
+    """
+    cli = EmailCLI()
+    cli.session.set_account(mock_account)
+    with patch.object(cli.prompt_session, "prompt_async", new_callable=AsyncMock, return_value="y"):
+      with patch.object(cli.session, "get_imap_client", new_callable=AsyncMock) as mock_imap:
+        mock_client = AsyncMock()
+        mock_client.list_folders = AsyncMock(return_value=[{"name": "INBOX"}, {"name": "Sent"}])
+        mock_client.move_message = AsyncMock(side_effect=ValueError("Invalid message ID"))
+        mock_imap.return_value = mock_client
+        with patch("simple_email_gw.cli.app.display_error") as mock_error:
+          await cli._cmd_move(["123", "Sent"])
+          mock_error.assert_called_once()
+          assert mock_error.call_args[0][1] == "Invalid message ID or folder"
+          assert mock_error.call_args[0][2] == "Invalid message ID"
+
+  @pytest.mark.asyncio
+  async def test_move_imap_error(self, mock_account):
+    """
+    Given: Account is selected, message ID and valid destination folder are provided
+    When: User confirms 'y' but move_message raises RuntimeError
+    Then: display_error is called with "Failed to move message" and the exception text
+    """
+    cli = EmailCLI()
+    cli.session.set_account(mock_account)
+    with patch.object(cli.prompt_session, "prompt_async", new_callable=AsyncMock, return_value="y"):
+      with patch.object(cli.session, "get_imap_client", new_callable=AsyncMock) as mock_imap:
+        mock_client = AsyncMock()
+        mock_client.list_folders = AsyncMock(return_value=[{"name": "INBOX"}, {"name": "Sent"}])
+        mock_client.move_message = AsyncMock(side_effect=RuntimeError("IMAP error"))
+        mock_imap.return_value = mock_client
+        with patch("simple_email_gw.cli.app.display_error") as mock_error:
+          await cli._cmd_move(["123", "Sent"])
+          mock_error.assert_called_once()
+          assert mock_error.call_args[0][1] == "Failed to move message"
+          assert mock_error.call_args[0][2] == "IMAP error"
+
+  @pytest.mark.asyncio
+  async def test_move_keyboard_interrupt_during_prompt(self, mock_account):
+    """
+    Given: Account is selected and message ID and folder are provided
+    When: User presses Ctrl+C at the confirmation prompt
+    Then: "Move cancelled." is printed and no IMAP call is made
+    """
+    cli = EmailCLI()
+    cli.session.set_account(mock_account)
+    with patch.object(
+      cli.prompt_session, "prompt_async", new_callable=AsyncMock, side_effect=KeyboardInterrupt()
+    ):
+      with patch.object(cli.session, "get_imap_client", new_callable=AsyncMock) as mock_imap:
+        with patch.object(cli.console, "print") as mock_print:
+          with patch("simple_email_gw.cli.app.display_error") as mock_error:
+            with patch("simple_email_gw.cli.app.display_success") as mock_success:
+              await cli._cmd_move(["123", "Sent"])
+              mock_print.assert_called_once_with("\n[dim]Move cancelled.[/dim]")
+              mock_imap.assert_not_called()
+              mock_error.assert_not_called()
+              mock_success.assert_not_called()
+
+  @pytest.mark.asyncio
+  async def test_move_keyboard_interrupt_during_imap(self, mock_account):
+    """
+    Given: Account is selected and message ID and folder are provided, user confirms 'y'
+    When: User presses Ctrl+C during the IMAP operation
+    Then: "Operation cancelled." is printed
+    """
+    cli = EmailCLI()
+    cli.session.set_account(mock_account)
+    with patch.object(cli.prompt_session, "prompt_async", new_callable=AsyncMock, return_value="y"):
+      with patch.object(
+        cli.session, "get_imap_client", new_callable=AsyncMock, side_effect=KeyboardInterrupt()
+      ):
+        with patch.object(cli.console, "print") as mock_print:
+          with patch("simple_email_gw.cli.app.display_error") as mock_error:
+            with patch("simple_email_gw.cli.app.display_success") as mock_success:
+              await cli._cmd_move(["123", "Sent"])
+              mock_print.assert_called_once_with("\n[dim]Operation cancelled.[/dim]")
+              mock_error.assert_not_called()
+              mock_success.assert_not_called()
