@@ -392,9 +392,7 @@ async def get_body_input(
       lines.append(line)
       total_bytes += len(line.encode("utf-8")) + 1  # +1 for newline
       if total_bytes > MAX_BODY_SIZE:
-        raise ValueError(
-          f"Body exceeds maximum size of {MAX_BODY_SIZE / (1024 * 1024):.0f} MB"
-        )
+        raise ValueError(f"Body exceeds maximum size of {MAX_BODY_SIZE / (1024 * 1024):.0f} MB")
   except EOFError:
     # Ctrl+D pressed
     pass

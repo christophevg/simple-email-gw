@@ -11,6 +11,8 @@ from pydantic import Field
 
 from simple_email_gw.connections.pool import RateLimitError, get_pool
 from simple_email_gw.imap.client import SecurityError
+from simple_email_gw.safety.audit import log_event
+from simple_email_gw.safety.sanitize import validate_folder_name
 from simple_email_gw.smtp.client import WhitelistError
 
 # Create FastMCP server
@@ -64,6 +66,56 @@ async def list_folders(
     raise ToolError("Rate limit exceeded. Please try again later.")
   except Exception:
     raise ToolError("Failed to list folders. Check server logs for details.")
+
+
+@mcp.tool
+async def create_folder(
+  account: Annotated[str, Field(description="Account name")],
+  folder_name: Annotated[
+    str,
+    Field(description="Name of the folder to create", min_length=1, max_length=255),
+  ],
+  ctx: Context | None = None,
+) -> dict[str, str]:
+  """Create a new folder/mailbox on the email account.
+
+  Args:
+    account: The account name.
+    folder_name: The name of the new folder.
+
+  Returns:
+    Dictionary with status and folder name.
+  """
+  if ctx:
+    await ctx.info(f"Creating folder {folder_name} for account: {account}")
+
+  # Defense-in-depth validation at MCP layer
+  try:
+    folder = validate_folder_name(folder_name)
+  except ValueError as e:
+    raise ToolError(str(e))
+
+  try:
+    pool = await get_pool()
+    client = await pool.get_imap_client(account)
+    await client.create_folder(folder)
+    log_event(
+      event="FOLDER_CREATED",
+      account=account,
+      details={"folder": folder},
+    )
+    return {"status": "created", "folder": folder}
+  except ValueError as e:
+    msg = str(e)
+    if "Account not found" in msg or "not found" in msg.lower():
+      raise ToolError(f"Account not found: {account}")
+    raise ToolError(msg)
+  except RateLimitError:
+    raise ToolError("Rate limit exceeded. Please try again later.")
+  except RuntimeError as e:
+    raise ToolError(str(e))
+  except Exception:
+    raise ToolError("Failed to create folder. Check server logs for details.")
 
 
 @mcp.tool

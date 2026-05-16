@@ -1470,7 +1470,9 @@ class TestWriteCommand:
     with patch("simple_email_gw.cli.app.get_recipient_whitelist") as mock_wl:
       mock_wl.return_value.is_allowed.return_value = True
       mock_wl.return_value.filter_recipients.return_value = (["alice@example.com"], [])
-      cli.prompt_session.prompt_async = AsyncMock(side_effect=["Subject", "", "", "Body", EOFError(), "y", "y"])
+      cli.prompt_session.prompt_async = AsyncMock(
+        side_effect=["Subject", "", "", "Body", EOFError(), "y", "y"]
+      )
       with patch.object(cli.console, "print") as mock_print:
         await cli._cmd_write(["alice@example.com"])
         # Verify subject prompt occurred (console printed "Subject:" prompt)
@@ -1518,8 +1520,8 @@ class TestWriteCommand:
       mock_wl.return_value.is_allowed.return_value = True
       mock_wl.return_value.filter_recipients.side_effect = [
         (["alice@example.com"], []),  # To
-        (["cc@example.com"], []),      # CC (valid, after invalid email was caught by validate_email)
-        ([], []),                      # BCC
+        (["cc@example.com"], []),  # CC (valid, after invalid email was caught by validate_email)
+        ([], []),  # BCC
       ]
       cli.prompt_session.prompt_async = AsyncMock(
         side_effect=["Subject", "bad-cc", "cc@example.com", "", "Body", EOFError(), "y", "y"]
@@ -1543,7 +1545,9 @@ class TestWriteCommand:
     with patch("simple_email_gw.cli.app.get_recipient_whitelist") as mock_wl:
       mock_wl.return_value.is_allowed.return_value = True
       mock_wl.return_value.filter_recipients.return_value = (["alice@example.com"], [])
-      cli.prompt_session.prompt_async = AsyncMock(side_effect=["", "", "", "Body", EOFError(), "y", "y"])
+      cli.prompt_session.prompt_async = AsyncMock(
+        side_effect=["", "", "", "Body", EOFError(), "y", "y"]
+      )
       with patch("simple_email_gw.cli.app.display_warning") as mock_warn:
         with patch.object(cli.session, "get_smtp_client", new_callable=AsyncMock) as mock_smtp:
           mock_client = AsyncMock()
@@ -1563,7 +1567,9 @@ class TestWriteCommand:
     with patch("simple_email_gw.cli.app.get_recipient_whitelist") as mock_wl:
       mock_wl.return_value.is_allowed.return_value = True
       mock_wl.return_value.filter_recipients.return_value = (["alice@example.com"], [])
-      cli.prompt_session.prompt_async = AsyncMock(side_effect=["Subject", "", "", "", EOFError(), "y", "y"])
+      cli.prompt_session.prompt_async = AsyncMock(
+        side_effect=["Subject", "", "", "", EOFError(), "y", "y"]
+      )
       with patch("simple_email_gw.cli.app.display_warning") as mock_warn:
         with patch.object(cli.session, "get_smtp_client", new_callable=AsyncMock) as mock_smtp:
           mock_client = AsyncMock()
@@ -1599,7 +1605,9 @@ class TestWriteCommand:
     with patch("simple_email_gw.cli.app.get_recipient_whitelist") as mock_wl:
       mock_wl.return_value.is_allowed.return_value = True
       mock_wl.return_value.filter_recipients.return_value = (["alice@example.com"], [])
-      cli.prompt_session.prompt_async = AsyncMock(side_effect=["Subject", "", "", "Body", EOFError(), "y", "y"])
+      cli.prompt_session.prompt_async = AsyncMock(
+        side_effect=["Subject", "", "", "Body", EOFError(), "y", "y"]
+      )
       with patch.object(cli.session, "get_smtp_client", new_callable=AsyncMock) as mock_smtp:
         mock_client = AsyncMock()
         mock_smtp.return_value = mock_client
@@ -1620,7 +1628,9 @@ class TestWriteCommand:
     with patch("simple_email_gw.cli.app.get_recipient_whitelist") as mock_wl:
       mock_wl.return_value.is_allowed.return_value = True
       mock_wl.return_value.filter_recipients.return_value = (["alice@example.com"], [])
-      cli.prompt_session.prompt_async = AsyncMock(side_effect=["Subject", "", "", "Body", EOFError(), "n"])
+      cli.prompt_session.prompt_async = AsyncMock(
+        side_effect=["Subject", "", "", "Body", EOFError(), "n"]
+      )
       with patch("simple_email_gw.cli.app.display_warning") as mock_warn:
         with patch.object(cli.session, "get_smtp_client", new_callable=AsyncMock) as mock_smtp:
           mock_client = AsyncMock()
@@ -1643,7 +1653,18 @@ class TestWriteCommand:
       mock_wl.return_value.filter_recipients.return_value = (["alice@example.com"], [])
       # Subject, CC, BCC, Body1, confirm 'e', Body2, confirm 'y', send anyway 'y'
       cli.prompt_session.prompt_async = AsyncMock(
-        side_effect=["Subject", "", "", "First body", EOFError(), "e", "Second body", EOFError(), "y", "y"]
+        side_effect=[
+          "Subject",
+          "",
+          "",
+          "First body",
+          EOFError(),
+          "e",
+          "Second body",
+          EOFError(),
+          "y",
+          "y",
+        ]
       )
       with patch.object(cli.session, "get_smtp_client", new_callable=AsyncMock) as mock_smtp:
         mock_client = AsyncMock()
@@ -1665,7 +1686,9 @@ class TestWriteCommand:
     with patch("simple_email_gw.cli.app.get_recipient_whitelist") as mock_wl:
       mock_wl.return_value.is_allowed.return_value = True
       mock_wl.return_value.filter_recipients.return_value = (["alice@example.com"], [])
-      cli.prompt_session.prompt_async = AsyncMock(side_effect=["Subject", "", "", "Body", EOFError(), "y", "y"])
+      cli.prompt_session.prompt_async = AsyncMock(
+        side_effect=["Subject", "", "", "Body", EOFError(), "y", "y"]
+      )
       with patch.object(cli.session, "get_smtp_client", new_callable=AsyncMock) as mock_smtp:
         mock_client = AsyncMock()
         mock_client.send_email = AsyncMock(side_effect=RuntimeError("SMTP failed"))
@@ -1686,7 +1709,9 @@ class TestWriteCommand:
     with patch("simple_email_gw.cli.app.get_recipient_whitelist") as mock_wl:
       mock_wl.return_value.is_allowed.return_value = True
       mock_wl.return_value.filter_recipients.return_value = (["alice@example.com"], [])
-      cli.prompt_session.prompt_async = AsyncMock(side_effect=["Subject", "", "", "Body", EOFError(), "y", "y"])
+      cli.prompt_session.prompt_async = AsyncMock(
+        side_effect=["Subject", "", "", "Body", EOFError(), "y", "y"]
+      )
       with patch.object(cli.session, "get_smtp_client", new_callable=AsyncMock) as mock_smtp:
         mock_client = AsyncMock()
         mock_smtp.return_value = mock_client
@@ -1706,7 +1731,9 @@ class TestWriteCommand:
     with patch("simple_email_gw.cli.app.get_recipient_whitelist") as mock_wl:
       mock_wl.return_value.is_allowed.return_value = True
       mock_wl.return_value.filter_recipients.return_value = (["alice@example.com"], [])
-      cli.prompt_session.prompt_async = AsyncMock(side_effect=["Subject", "", "", "Body", EOFError(), "y", "y"])
+      cli.prompt_session.prompt_async = AsyncMock(
+        side_effect=["Subject", "", "", "Body", EOFError(), "y", "y"]
+      )
       with patch.object(cli.session, "get_smtp_client", new_callable=AsyncMock) as mock_smtp:
         mock_client = AsyncMock()
         mock_smtp.return_value = mock_client
@@ -1807,9 +1834,7 @@ class TestReplyCommand:
           mock_imap.return_value = mock_imap_client
           await cli._cmd_reply(["123"])
           mock_imap.assert_called_once()
-          mock_imap_client.fetch_message.assert_called_once_with(
-            "123", folder="INBOX"
-          )
+          mock_imap_client.fetch_message.assert_called_once_with("123", folder="INBOX")
           assert cli.session.get_cached_email("123") == original
 
   @pytest.mark.asyncio
@@ -2047,7 +2072,6 @@ class TestReplyCommand:
           await cli._cmd_reply(["123"])
           mock_success.assert_called_once()
 
-
   @pytest.mark.asyncio
   async def test_reply_command_display_name_from_header(self, mock_account):
     """
@@ -2134,7 +2158,9 @@ class TestWriteCommandMultipleRecipients:
         ["alice@x.com", "bob@x.com"],
         [],
       )
-      cli.prompt_session.prompt_async = AsyncMock(side_effect=["Subject", "", "", "Body", EOFError(), "y", "y"])
+      cli.prompt_session.prompt_async = AsyncMock(
+        side_effect=["Subject", "", "", "Body", EOFError(), "y", "y"]
+      )
       with patch.object(cli.session, "get_smtp_client", new_callable=AsyncMock) as mock_smtp:
         mock_client = AsyncMock()
         mock_smtp.return_value = mock_client
@@ -2201,7 +2227,9 @@ class TestCompositionSecurity:
     with patch("simple_email_gw.cli.app.get_recipient_whitelist") as mock_wl:
       mock_wl.return_value.is_allowed.return_value = True
       mock_wl.return_value.filter_recipients.return_value = (["alice@example.com"], [])
-      cli.prompt_session.prompt_async = AsyncMock(side_effect=["Subject", "", "", "Body", EOFError(), "y", "y"])
+      cli.prompt_session.prompt_async = AsyncMock(
+        side_effect=["Subject", "", "", "Body", EOFError(), "y", "y"]
+      )
       with patch.object(cli.session, "get_smtp_client", new_callable=AsyncMock) as mock_smtp:
         mock_client = AsyncMock()
         mock_client.send_email = AsyncMock(side_effect=RuntimeError("SMTP failed"))

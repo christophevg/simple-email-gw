@@ -2,6 +2,17 @@
 
 ## Backlog
 
+### MCP Server Enhancement
+
+- [ ] **MCP-001: Add create_folder tool**
+  - Location: `src/simple_email_gw/mcp/tools/`
+  - Add `create_folder` MCP tool that wraps IMAP's `CREATE` command
+  - Tool signature: `create_folder(account: str, folder_name: str) -> dict`
+  - Returns: `{"status": "created", "folder": folder_name}`
+  - Error handling: folder already exists, permission denied
+  - Acceptance: MCP clients can create folders (e.g., "Sent") programmatically
+  - Context: Email processor needs to store sent emails in a Sent folder
+
 ### Phase 1: CLI Infrastructure
 
 - [x] **1.1: Add Rich and prompt_toolkit dependencies**
@@ -631,4 +642,11 @@
 
 ## Done
 
-None yet.
+- [x] **MCP-001: Add create_folder tool**
+  - Location: `src/simple_email_gw/mcp.py`, `src/simple_email_gw/imap/client.py`, `src/simple_email_gw/safety/`
+  - Added `create_folder` MCP tool that wraps IMAP's `CREATE` command
+  - Tool signature: `create_folder(account: str, folder_name: str) -> dict`
+  - Returns: `{"status": "created", "folder": folder_name}`
+  - Error handling: folder already exists, permission denied, quota exceeded
+  - Security: input validation at both MCP and IMAP layers, audit logging, generic error messages
+  - **Completed**: 2026-05-16

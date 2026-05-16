@@ -1034,3 +1034,77 @@ class TestSyncIMAPClientResourceCleanup:
     # Thread count should return to initial
     final_thread_count = threading.active_count()
     assert final_thread_count <= initial_thread_count
+
+
+class TestSyncIMAPClientCreateFolder:
+  """Test create_folder method delegation."""
+
+  def test_create_folder_delegates_to_async_client(self):
+    """
+    Given: SyncIMAPClient instance
+    When: Calling create_folder(folder_name="Sent")
+    Then: Delegates to async client's create_folder method with correct params
+    """
+    account = EmailAccount(
+      name="test",
+      imap_host="imap.example.com",
+      smtp_host="smtp.example.com",
+      username="test@example.com",
+    )
+    client = SyncIMAPClient(account)
+    try:
+      with patch.object(
+        client._async_client, "create_folder", new_callable=AsyncMock
+      ) as mock_create:
+        mock_create.return_value = True
+        result = client.create_folder("Sent")
+        mock_create.assert_called_once_with("Sent")
+        assert result is True
+    finally:
+      client.disconnect()
+
+  def test_create_folder_returns_true_on_success(self):
+    """
+    Given: SyncIMAPClient instance
+    When: Calling create_folder() successfully
+    Then: Returns True
+    """
+    account = EmailAccount(
+      name="test",
+      imap_host="imap.example.com",
+      smtp_host="smtp.example.com",
+      username="test@example.com",
+    )
+    client = SyncIMAPClient(account)
+    try:
+      with patch.object(
+        client._async_client, "create_folder", new_callable=AsyncMock
+      ) as mock_create:
+        mock_create.return_value = True
+        result = client.create_folder("Archive")
+        assert result is True
+    finally:
+      client.disconnect()
+
+  def test_create_folder_wraps_errors(self):
+    """
+    Given: SyncIMAPClient instance
+    When: Async client raises RuntimeError or ValueError
+    Then: Error is propagated through sync wrapper
+    """
+    account = EmailAccount(
+      name="test",
+      imap_host="imap.example.com",
+      smtp_host="smtp.example.com",
+      username="test@example.com",
+    )
+    client = SyncIMAPClient(account)
+    try:
+      with patch.object(
+        client._async_client, "create_folder", new_callable=AsyncMock
+      ) as mock_create:
+        mock_create.side_effect = RuntimeError("Folder already exists")
+        with pytest.raises(RuntimeError, match="already exists"):
+          client.create_folder("Sent")
+    finally:
+      client.disconnect()

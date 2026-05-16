@@ -111,3 +111,12 @@ def log_attachment_download(
       "output_path": output_path,
     },
   )
+
+
+def log_folder_created(account_name: str, folder_name: str) -> None:
+  """Log a folder creation event."""
+  log_event(
+    event="FOLDER_CREATED",
+    account=account_name,
+    details={"folder": folder_name},
+  )

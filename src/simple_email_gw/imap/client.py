@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import email
 import hashlib
+import logging
 import os
 import re
 import socket
@@ -21,7 +22,10 @@ from simple_email_gw.safety.audit import log_attachment_download, log_auth_attem
 from simple_email_gw.safety.sanitize import (
   sanitize_folder_name,
   sanitize_message_id_numeric,
+  validate_folder_name,
 )
+
+_logger = logging.getLogger(__name__)
 
 # Default workspace for attachment downloads
 DEFAULT_WORKSPACE = Path(os.environ.get("EMAIL_WORKSPACE", "/tmp/email_workspace"))
@@ -167,6 +171,52 @@ class IMAPClient:
           )
 
       return folders
+
+  async def create_folder(self, folder_name: str) -> bool:
+    """Create a new folder/mailbox on the IMAP server.
+
+    Args:
+      folder_name: Name of the folder to create.
+
+    Returns:
+      True if the folder was created successfully.
+
+    Raises:
+      ValueError: If folder name is invalid.
+      RuntimeError: If the IMAP server rejects the CREATE command.
+    """
+    # Defense-in-depth: shared validation + existing sanitization
+    safe_folder = sanitize_folder_name(validate_folder_name(folder_name))
+
+    async with self._operation_lock:
+      client = await self.connect()
+      status, data = await client.create(safe_folder)
+
+      if status == "OK":
+        return True
+
+      if status == "NO":
+        error_text = ""
+        if data and isinstance(data, list) and len(data) > 0:
+          first = data[0]
+          if isinstance(first, bytes):
+            error_text = first.decode(errors="replace")
+          elif isinstance(first, str):
+            error_text = first
+
+        _logger.warning("IMAP CREATE failed: %s", error_text)
+
+        if "[ALREADYEXISTS]" in error_text:
+          raise RuntimeError("Folder already exists")
+        if "[OVERQUOTA]" in error_text or "quota" in error_text.lower():
+          raise RuntimeError("Mailbox quota exceeded. Contact administrator.")
+        if "[NOPERM]" in error_text:
+          raise RuntimeError("Failed to create folder. Check server logs for details.")
+        if "Invalid mailbox name" in error_text:
+          raise RuntimeError("Invalid folder name")
+        raise RuntimeError("Failed to create folder")
+
+      raise RuntimeError("Failed to create folder")
 
   async def select_folder(self, folder: str = "INBOX") -> dict[str, str | int]:
     """Select a folder and return message count."""

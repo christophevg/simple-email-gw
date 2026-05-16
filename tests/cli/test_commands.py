@@ -694,7 +694,9 @@ async def test_ls_read_status_fallback_when_missing_read_key(
 
 
 @patch("simple_email_gw.cli.display.display_email")
-async def test_show_happy_path_cached_email(mock_display_email, cli, mock_session, mock_imap_client):
+async def test_show_happy_path_cached_email(
+  mock_display_email, cli, mock_session, mock_imap_client
+):
   """
   Given: An account is selected and the message is cached in session
   When: The 'show <message_id>' command is executed
@@ -726,7 +728,9 @@ async def test_show_happy_path_cached_email(mock_display_email, cli, mock_sessio
 
 
 @patch("simple_email_gw.cli.display.display_email")
-async def test_show_happy_path_fetch_not_cached(mock_display_email, cli, mock_session, mock_imap_client):
+async def test_show_happy_path_fetch_not_cached(
+  mock_display_email, cli, mock_session, mock_imap_client
+):
   """
   Given: An account is selected and the message is not cached
   When: The 'show <message_id>' command is executed
@@ -833,7 +837,9 @@ async def test_show_invalid_message_id_shows_error(mock_display_error, cli, mock
 
 
 @patch("simple_email_gw.cli.display.display_email")
-async def test_show_spinner_shown_on_cache_miss(mock_display_email, cli, mock_session, mock_imap_client):
+async def test_show_spinner_shown_on_cache_miss(
+  mock_display_email, cli, mock_session, mock_imap_client
+):
   """
   Given: An account is selected and the message is not cached
   When: The 'show <message_id>' command is executed
@@ -949,7 +955,9 @@ async def test_show_keyboard_interrupt_shows_cancelled_message(
 
 
 @patch("simple_email_gw.cli.display.display_email")
-async def test_show_stale_cache_after_folder_change(mock_display_email, cli, mock_session, mock_imap_client):
+async def test_show_stale_cache_after_folder_change(
+  mock_display_email, cli, mock_session, mock_imap_client
+):
   """
   Given: A message was cached in INBOX and folder was changed to Sent
   When: The 'show' command is executed for the same message ID in the new folder

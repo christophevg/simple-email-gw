@@ -10,6 +10,7 @@ from simple_email_gw.safety.sanitize import (
   sanitize_message_id_numeric,
   sanitize_references,
   sanitize_subject,
+  validate_folder_name,
 )
 
 
@@ -219,3 +220,110 @@ class TestSanitizeMessageIdNumeric:
     """Test negative number is rejected."""
     with pytest.raises(ValueError, match="Invalid message ID"):
       sanitize_message_id_numeric("-1")
+
+
+class TestValidateFolderName:
+  """Tests for validate_folder_name function."""
+
+  def test_valid_folder_name(self):
+    """Test valid folder name passes through."""
+    result = validate_folder_name("Archive")
+    assert result == "Archive"
+
+  def test_strips_whitespace(self):
+    """Test leading/trailing whitespace is stripped."""
+    result = validate_folder_name("  Archive  ")
+    assert result == "Archive"
+
+  def test_rejects_empty(self):
+    """Test empty folder name is rejected."""
+    with pytest.raises(ValueError, match="cannot be empty"):
+      validate_folder_name("")
+
+  def test_rejects_whitespace_only(self):
+    """Test whitespace-only folder name is rejected."""
+    with pytest.raises(ValueError, match="cannot be empty"):
+      validate_folder_name("   ")
+
+  def test_rejects_too_long(self):
+    """Test folder name longer than 255 bytes is rejected."""
+    long_name = "x" * 256
+    with pytest.raises(ValueError, match="exceeds maximum length"):
+      validate_folder_name(long_name)
+
+  def test_rejects_crlf(self):
+    """Test CRLF sequences are rejected."""
+    with pytest.raises(ValueError, match="invalid characters"):
+      validate_folder_name("Bad\r\nFolder")
+
+  def test_rejects_cr(self):
+    """Test CR alone is rejected."""
+    with pytest.raises(ValueError, match="invalid characters"):
+      validate_folder_name("Bad\rFolder")
+
+  def test_rejects_lf(self):
+    """Test LF alone is rejected."""
+    with pytest.raises(ValueError, match="invalid characters"):
+      validate_folder_name("Bad\nFolder")
+
+  def test_rejects_null(self):
+    """Test null character is rejected."""
+    with pytest.raises(ValueError, match="invalid characters"):
+      validate_folder_name("Bad\x00Folder")
+
+  def test_rejects_quotes(self):
+    """Test double quotes are rejected."""
+    with pytest.raises(ValueError, match="invalid characters"):
+      validate_folder_name('Bad"Folder')
+
+  def test_rejects_backslash(self):
+    """Test backslashes are rejected."""
+    with pytest.raises(ValueError, match="invalid characters"):
+      validate_folder_name("Bad\\Folder")
+
+  def test_rejects_path_traversal_slash(self):
+    """Test '..' in slash-separated paths is rejected."""
+    with pytest.raises(ValueError, match="Invalid folder name"):
+      validate_folder_name("foo/../bar")
+
+  def test_rejects_path_traversal_dot(self):
+    """Test '..' in dot-separated paths is rejected."""
+    with pytest.raises(ValueError, match="Invalid folder name"):
+      validate_folder_name("foo..bar")
+
+  def test_rejects_leading_slash(self):
+    """Test leading slash is rejected."""
+    with pytest.raises(ValueError, match="Invalid folder name"):
+      validate_folder_name("/Absolute")
+
+  def test_rejects_leading_dot(self):
+    """Test leading dot is rejected."""
+    with pytest.raises(ValueError, match="Invalid folder name"):
+      validate_folder_name(".Absolute")
+
+  def test_rejects_deep_nesting_slash(self):
+    """Test more than 10 slash levels is rejected."""
+    deep_name = "/".join([f"level{i}" for i in range(11)])
+    with pytest.raises(ValueError, match="exceeds maximum depth"):
+      validate_folder_name(deep_name)
+
+  def test_rejects_deep_nesting_dot(self):
+    """Test more than 10 dot levels is rejected."""
+    deep_dot = ".".join([f"level{i}" for i in range(11)])
+    with pytest.raises(ValueError, match="exceeds maximum depth"):
+      validate_folder_name(deep_dot)
+
+  def test_rejects_inbox_uppercase(self):
+    """Test INBOX is rejected."""
+    with pytest.raises(ValueError, match="reserved folder name"):
+      validate_folder_name("INBOX")
+
+  def test_rejects_inbox_lowercase(self):
+    """Test lowercase inbox is rejected."""
+    with pytest.raises(ValueError, match="reserved folder name"):
+      validate_folder_name("inbox")
+
+  def test_rejects_inbox_mixed_case(self):
+    """Test mixed case Inbox is rejected."""
+    with pytest.raises(ValueError, match="reserved folder name"):
+      validate_folder_name("Inbox")

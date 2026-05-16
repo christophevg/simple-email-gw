@@ -921,9 +921,7 @@ class EmailCLI:
       try:
         with self.console.status("[bold green]Fetching original message...[/bold green]"):
           client = await self.session.get_imap_client()
-          original = await client.fetch_message(
-            message_id, folder=self.session.current_folder
-          )
+          original = await client.fetch_message(message_id, folder=self.session.current_folder)
         self.session.cache_email(message_id, original)
       except KeyboardInterrupt:
         self.console.print("\n[dim]Fetch cancelled.[/dim]")

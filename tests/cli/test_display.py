@@ -1735,6 +1735,7 @@ class TestPreviewDisplay:
         table = tables[0]
         # Render table to string to verify metadata labels appear as row content
         from io import StringIO
+
         output = StringIO()
         test_console = Console(file=output, force_terminal=False, width=80)
         test_console.print(table)

@@ -16,6 +16,7 @@ from simple_email_gw.safety.sanitize import (
   sanitize_message_id_numeric,
   sanitize_references,
   sanitize_subject,
+  validate_folder_name,
 )
 
 __all__ = [
@@ -33,6 +34,7 @@ __all__ = [
   "sanitize_header_value",
   "sanitize_subject",
   "sanitize_folder_name",
+  "validate_folder_name",
   "sanitize_filename",
   "sanitize_message_id_numeric",
 ]

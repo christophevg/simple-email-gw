@@ -163,6 +163,38 @@ def sanitize_subject(subject: str) -> str:
   return sanitized
 
 
+def validate_folder_name(name: str) -> str:
+  """Validate and normalize a folder name for IMAP CREATE.
+
+  Args:
+    name: Raw folder name.
+
+  Returns:
+    Stripped, validated folder name.
+
+  Raises:
+    ValueError: If the folder name is invalid (with descriptive message).
+  """
+  folder = name.strip()
+  if not folder:
+    raise ValueError("Folder name cannot be empty")
+  if len(folder.encode("utf-8")) > 255:
+    raise ValueError("Folder name exceeds maximum length")
+  if "\r" in folder or "\n" in folder:
+    raise ValueError("Folder name contains invalid characters")
+  if "\x00" in folder or '"' in folder or "\\" in folder:
+    raise ValueError("Folder name contains invalid characters")
+  if ".." in folder.split("/") or ".." in folder.split(".") or ".." in folder:
+    raise ValueError("Invalid folder name")
+  if folder.startswith(("/", ".")):
+    raise ValueError("Invalid folder name")
+  if len(folder.split("/")) > 10 or len(folder.split(".")) > 10:
+    raise ValueError("Folder nesting exceeds maximum depth")
+  if folder.upper() == "INBOX":
+    raise ValueError("INBOX is a reserved folder name")
+  return folder
+
+
 def sanitize_folder_name(folder: str) -> str:
   """Sanitize IMAP folder name to prevent CRLF injection.
 

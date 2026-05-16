@@ -115,6 +115,21 @@ class SyncIMAPClient:
     """
     return self._run_coroutine(self._async_client.list_folders())  # type: ignore[no-any-return]
 
+  def create_folder(self, folder_name: str) -> bool:
+    """Create a new folder/mailbox.
+
+    Args:
+      folder_name: Name of the folder to create
+
+    Returns:
+      True if successful
+
+    Raises:
+      RuntimeError: If operation fails
+      ValueError: If folder name contains invalid characters
+    """
+    return self._run_coroutine(self._async_client.create_folder(folder_name))  # type: ignore[no-any-return]
+
   def select_folder(self, folder: str = "INBOX") -> dict[str, int]:
     """Select a folder and return message count.
 
