@@ -4,6 +4,11 @@
 
 ### MCP Server Enhancement
 
+- [ ] **MCP-000: Set up local MCP testing**
+  - Configure Claude Code plugin to use local development code as MCP server
+  - Enable testing MCP tools without publishing to PyPI
+  - Context: Currently must publish to test fixes, which slows down development
+
 - [x] **MCP-001: Add create_folder tool**
   - Location: `src/simple_email_gw/mcp/tools/`
   - Add `create_folder` MCP tool that wraps IMAP's `CREATE` command

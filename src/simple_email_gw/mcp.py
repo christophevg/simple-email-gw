@@ -159,7 +159,7 @@ async def get_email(
   message_id: Annotated[str, Field(description="Message ID to fetch")],
   folder: Annotated[str, Field(default="INBOX", description="Folder name")] = "INBOX",
   ctx: Context | None = None,
-) -> dict[str, str | list[str]]:
+) -> dict[str, str | list[str] | bool]:
   """Fetch a single email message by ID.
 
   Args:
@@ -168,7 +168,8 @@ async def get_email(
     folder: The folder containing the message (default: INBOX).
 
   Returns:
-    Email details including subject, from, to, date, body, and attachments.
+    Email details including id, folder, subject, from, to, date, body,
+    attachments, read (boolean), message_id, and references.
   """
   if ctx:
     await ctx.info(f"Fetching message {message_id} from {folder}")
