@@ -1,6 +1,6 @@
 [project]
 name = "simple-email-gw"
-version = "0.2.0"
+version = "0.2.1"
 description = "Simple email gateway with IMAP/SMTP clients, connection pooling, and MCP server"
 authors = [{name = "Christophe VG", email = "contact@christophe.vg"}]
 readme = "README.md"
