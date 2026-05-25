@@ -1,74 +1,98 @@
-MODEL = kimi-k2.6:cloud
 -include ~/.claude/Makefile
 
-# Makefile for simple-email-gw
-# Utility targets for common development actions
+.PHONY: env-dev env-run install-pythons test test-cov test-all format lint typecheck check run docs docs-view build pre-publish publish publish-test clean clean-all help
 
-.PHONY: run-env dev-env test test-all lint format typecheck build publish clean all help docs
+## Environment
 
-## run-env: Install production dependencies
-run-env:
-	uv sync
-
-## dev-env: Install with all dependencies (dev, docs, extras)
-dev-env:
+env-dev: ## Install all dependencies (dev + docs)
 	uv sync --all-extras
 
-## test: Run tests with pytest
-test: dev-env
-	uv run pytest
+env-run: ## Install runtime dependencies only
+	uv sync
 
-## test-all: Run tests with tox (all Python versions)
-test-all: dev-env
+install-pythons: ## Install Python 3.10, 3.11, 3.12
+	uv python install 3.10 3.11 3.12
+
+## Testing
+
+test: env-dev ## Run tests (usage: make test / optional: TEST=file|file:test_name)
+	uv run pytest -v $(TEST)
+
+test-cov: env-dev ## Run tests with coverage
+	uv run pytest --cov=src/simple_email_gw --cov-report=term-missing $(TEST)
+
+test-all: env-dev ## Run tests on all Python versions
 	uv run tox
 
-## test-cov: Run tests with coverage report
-test-cov: dev-env
-	uv run pytest --cov=src/simple_email_gw --cov-report=term-missing
+## Code Quality
 
-## lint: Run ruff linting
-lint: dev-env
-	uv run ruff check src/ tests/
+format: env-dev ## Format code and fix linting issues
+	uv run ruff format src tests
+	uv run ruff check --fix src tests
 
-## format: Format code with ruff
-format: dev-env
-	uv run ruff format src/ tests/
+lint: env-dev ## Check code for linting issues
+	uv run ruff check src tests
 
-## typecheck: Run mypy type checking
-typecheck: dev-env
-	uv run mypy src/
+typecheck: env-dev ## Run type checking
+	uv run mypy src
 
-## docs: Build documentation
-docs: dev-env
+check: format lint typecheck test ## Run all quality checks
+
+## Running
+
+run: env-run ## Run the application
+	uv run python -m simple_email_gw
+
+## Documentation
+
+docs: env-dev ## Build HTML documentation
 	cd docs && uv run sphinx-build -b html . _build/html
 
-## build: Build distribution packages
-build: dev-env
+docs-view: docs ## Build and open documentation
+	open docs/_build/html/index.html
+
+## Build & Publish
+
+build: ## Build distribution packages
 	uv build
 
-## publish: Publish to PyPI (requires credentials)
-publish: build
+pre-publish: check ## Pre-publication checks (run before publishing)
+	@echo "Checking for relative image paths in README..."
+	@grep -n '!\[.*](media/' README.md && (echo "ERROR: Relative image paths found - use raw GitHub URLs for PyPI"; exit 1) || echo "OK: No relative image paths"
+	@echo "Checking version sync..."
+	@VERSION_PY=$$(grep '^version =' pyproject.toml | cut -d'"' -f2); \
+	VERSION_INIT=$$(grep '^__version__ = ' src/simple_email_gw/__init__.py | cut -d'"' -f2); \
+	if [ "$$VERSION_PY" != "$$VERSION_INIT" ]; then \
+		echo "ERROR: Version mismatch - pyproject.toml ($$VERSION_PY) vs __init__.py ($$VERSION_INIT)"; \
+		exit 1; \
+	fi; \
+	echo "OK: Versions match ($$VERSION_PY)"
+	@echo "Pre-publication checks passed"
+
+publish: clean build ## Publish to PyPI (runs pre-publish checks)
+	@$(MAKE) pre-publish
 	uv run twine upload dist/*
 
-## publish-test: Publish to TestPyPI (requires credentials)
-publish-test: build
+publish-test: build ## Publish to TestPyPI
 	uv run twine upload --repository testpypi dist/*
 
-## clean: Clean build artifacts
-clean:
-	rm -rf dist/ build/ *.egg-info .pytest_cache .coverage .mypy_cache
+## Cleanup
+
+clean: ## Remove build artifacts
+	rm -rf dist/ build/ *.egg-info .pytest_cache .coverage .mypy_cache .ruff_cache
 	rm -rf docs/_build
 	find . -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
 
-## check: Run lint, test, and typecheck
-check: dev-env format test typecheck
+clean-all: clean ## Remove virtualenv and lock file
+	rm -rf .venv uv.lock
 
-## email-gw-mcp-server: Run the MCP server
-email-gw-mcp-server: run-env
-	uv tool run --with . email-gw-mcp-server
+## Help
 
-## help: Show this help message
-help:
-	@echo "Available targets:"
+help: ## Show this help message
+	@echo "Usage: make [target]"
 	@echo ""
-	@sed -n 's/^## //p' $(MAKEFILE_LIST) | column -t -s ':'
+	@echo "Targets:"
+	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' Makefile | grep -v "install-pythons\|sync" | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-15s\033[0m %s\n", $$1, $$2}'
+
+# Project-specific targets (review and integrate)
+# - email-gw-mcp-server: Run the MCP server (was: uv tool run --with . email-gw-mcp-server)

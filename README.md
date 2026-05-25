@@ -1,14 +1,12 @@
 # simple-email-gw
 
-[![PyPI version](https://img.shields.io/pypi/v/simple-email-gw.svg)](https://pypi.org/project/simple-email-gw/)
-[![PyPI downloads](https://img.shields.io/pypi/dm/simple-email-gw.svg)](https://pypistats.org/packages/simple-email-gw)
-[![Python versions](https://img.shields.io/pypi/pyversions/simple-email-gw.svg)](https://pypi.org/project/simple-email-gw/)
-[![License](https://img.shields.io/github/license/christophevg/simple-email-gw.svg)](https://github.com/christophevg/simple-email-gw/blob/main/LICENSE)
-[![CI](https://github.com/christophevg/simple-email-gw/actions/workflows/ci.yml/badge.svg)](https://github.com/christophevg/simple-email-gw/actions/workflows/ci.yml)
-[![Code style: ruff](https://img.shields.io/badge/code%20style-ruff-blue.svg)](https://github.com/astral-sh/ruff)
-[![Type checked: mypy](https://img.shields.io/badge/type%20checked-mypy-blue.svg)](https://mypy.readthedocs.io/)
-[![Read the Docs](https://img.shields.io/readthedocs/simple-email-gw.svg)](https://simple-email-gw.readthedocs.io/)
-[![Agentic](https://img.shields.io/badge/workflow-agentic-blueviolet?style=flat-square)](https://christophe.vg/about/Coding-Agent)
+[![PyPI](https://img.shields.io/pypi/v/simple-email-gw.svg)][pypi]
+[![Python](https://img.shields.io/pypi/pyversions/simple-email-gw.svg)][pypi]
+[![uv](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/uv/main/assets/badge/v0.json)][uv]
+[![CI](https://img.shields.io/github/actions/workflow/status/christophevg/simple-email-gw/ci.yml.svg)][ci]
+[![Coverage](https://img.shields.io/coveralls/github/christophevg/simple-email-gw.svg)][coveralls]
+[![License](https://img.shields.io/github/license/christophevg/simple-email-gw.svg)][license]
+[![Agentic](https://img.shields.io/badge/workflow-agentic-blueviolet?style=flat-square)](https://christophe.vg/about/Agentic-Workflow)
 
 A simple email gateway with IMAP/SMTP clients, connection pooling, and MCP server for AI assistant integration.
 
@@ -273,3 +271,9 @@ make email-gw-mcp-server # Run the MCP server
 ## License
 
 MIT License - see [LICENSE](LICENSE) for details.
+
+[pypi]: https://pypi.org/project/simple-email-gw/
+[uv]: https://docs.astral.sh/uv/
+[ci]: https://github.com/christophevg/simple-email-gw/actions
+[coveralls]: https://coveralls.io/github/christophevg/simple-email-gw
+[license]: https://github.com/christophevg/simple-email-gw/blob/main/LICENSE

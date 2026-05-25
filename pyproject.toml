@@ -1,11 +1,15 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
 [project]
 name = "simple-email-gw"
 version = "0.2.1"
 description = "Simple email gateway with IMAP/SMTP clients, connection pooling, and MCP server"
-authors = [{name = "Christophe VG", email = "contact@christophe.vg"}]
 readme = "README.md"
 requires-python = ">=3.10"
 license = {text = "MIT"}
+authors = [{name = "Christophe VG", email = "contact@christophe.vg"}]
 keywords = ["email", "imap", "smtp", "mcp", "model-context-protocol"]
 classifiers = [
   "Development Status :: 4 - Beta",
@@ -30,60 +34,47 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+docs = [
+  "sphinx>=7.0.0",
+  "sphinx-rtd-theme>=2.0.0",
+  "myst-parser>=2.0.0",
+]
 dev = [
   "pytest>=8.0.0",
   "pytest-asyncio>=0.23.0",
-  "pytest-cov>=4.1.0",
-  "ruff>=0.4.0",
-  "mypy>=1.9.0",
+  "pytest-cov>=5.0.0",
+  "mypy>=1.13.0",
+  "ruff>=0.8.0",
   "tox>=4.0.0",
+  "tox-uv>=1.0.0",
+  "build>=1.0.0",
   "twine>=6.0.0",
   "coveralls>=3.3.0",
-]
-docs = [
-  "sphinx>=7.0.0",
-  "myst-parser>=2.0.0",
-  "furo>=2024.0.0",
 ]
 
 [project.scripts]
 email-gw-mcp-server = "simple_email_gw.mcp:run"
 email-gw-cli = "simple_email_gw.cli.app:main"
 
-[build-system]
-requires = ["hatchling"]
-build-backend = "hatchling.build"
+[project.urls]
+Homepage = "https://github.com/christophevg/simple-email-gw"
+Documentation = "https://github.com/christophevg/simple-email-gw#readme"
+Repository = "https://github.com/christophevg/simple-email-gw"
+Issues = "https://github.com/christophevg/simple-email-gw/issues"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/simple_email_gw"]
 
-[tool.ruff]
-line-length = 100
-target-version = "py310"
-indent-width = 2
-
-[tool.ruff.format]
-indent-style = "space"
-
-[tool.ruff.lint]
-select = ["E", "F", "I", "N", "W", "UP"]
-ignore = ["E501"]
-
 [tool.pytest.ini_options]
-asyncio_mode = "auto"
 testpaths = ["tests"]
+asyncio_mode = "auto"
+addopts = "-v --cov=simple_email_gw --cov-report=term-missing"
 
 [tool.mypy]
 python_version = "3.10"
+strict = true
 warn_return_any = true
-warn_unused_ignores = false
-ignore_missing_imports = true
-no_implicit_optional = true
-warn_redundant_casts = true
-disallow_untyped_defs = true
-disallow_incomplete_defs = true
-check_untyped_defs = true
-disallow_untyped_decorators = false
+warn_unused_ignores = true
 
 [[tool.mypy.overrides]]
 module = "aioimaplib.*"
@@ -98,20 +89,52 @@ disable_error_code = ["no-any-return", "assignment", "arg-type", "union-attr", "
 module = "simple_email_gw.smtp.client"
 disable_error_code = ["assignment", "arg-type"]
 
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+indent-width = 2
+
+[tool.ruff.lint]
+select = [
+  "E",   # pycodestyle errors
+  "W",   # pycodestyle warnings
+  "F",   # pyflakes
+  "I",   # isort
+  "B",   # flake8-bugbear
+  "C4",  # flake8-comprehensions
+  "UP",  # pyupgrade
+]
+ignore = [
+  "E501",  # line too long (handled by formatter)
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["simple_email_gw"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+
+[tool.coverage.run]
+source = ["src"]
+branch = true
+
+[tool.coverage.report]
+exclude_lines = [
+  "pragma: no cover",
+  "def __repr__",
+  "raise NotImplementedError",
+  "if TYPE_CHECKING:",
+]
+
 [tool.tox]
 env_list = ["py310", "py311", "py312"]
 
 [tool.tox.env_run_base]
-description = "Run tests under {base_python}"
-deps = ["-e .[dev]"]
-commands = [["pytest", "-v"]]
-
-[tool.tox.env.lint]
-description = "Run linting"
-deps = ["-e .[dev]"]
-commands = [["ruff", "check", "src/", "tests/"]]
-
-[tool.tox.env.typecheck]
-description = "Run type checking"
-deps = ["-e .[dev]"]
-commands = [["mypy", "src/"]]
+description = "run tests with pytest"
+skip_install = false
+commands_pre = [
+  ["uv", "pip", "install", "-e", "."],
+  ["uv", "pip", "install", "pytest", "pytest-cov", "pytest-asyncio"],
+]
+commands = [["pytest", "tests", "-v", "--cov=simple_email_gw", "--cov-report=term-missing"]]
