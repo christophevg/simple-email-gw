@@ -35,8 +35,8 @@ async def list_accounts(ctx: Context | None = None) -> list[dict[str, str]]:
     pool = await get_pool()
     accounts = await pool.get_accounts()
     return [{"name": acc.name, "username": acc.username} for acc in accounts]
-  except Exception:
-    raise ToolError("Failed to list accounts. Check server logs for details.")
+  except Exception as e:
+    raise ToolError("Failed to list accounts. Check server logs for details.") from e
 
 
 @mcp.tool
@@ -61,11 +61,11 @@ async def list_folders(
     folders = await client.list_folders()
     return folders
   except ValueError:
-    raise ToolError(f"Account not found: {account}")
+    raise ToolError(f"Account not found: {account}") from None
   except RateLimitError:
-    raise ToolError("Rate limit exceeded. Please try again later.")
-  except Exception:
-    raise ToolError("Failed to list folders. Check server logs for details.")
+    raise ToolError("Rate limit exceeded. Please try again later.") from None
+  except Exception as e:
+    raise ToolError("Failed to list folders. Check server logs for details.") from e
 
 
 @mcp.tool
@@ -93,7 +93,7 @@ async def create_folder(
   try:
     folder = validate_folder_name(folder_name)
   except ValueError as e:
-    raise ToolError(str(e))
+    raise ToolError(str(e)) from e
 
   try:
     pool = await get_pool()
@@ -108,14 +108,14 @@ async def create_folder(
   except ValueError as e:
     msg = str(e)
     if "Account not found" in msg or "not found" in msg.lower():
-      raise ToolError(f"Account not found: {account}")
-    raise ToolError(msg)
+      raise ToolError(f"Account not found: {account}") from None
+    raise ToolError(msg) from e
   except RateLimitError:
-    raise ToolError("Rate limit exceeded. Please try again later.")
+    raise ToolError("Rate limit exceeded. Please try again later.") from None
   except RuntimeError as e:
-    raise ToolError(str(e))
-  except Exception:
-    raise ToolError("Failed to create folder. Check server logs for details.")
+    raise ToolError(str(e)) from e
+  except Exception as e:
+    raise ToolError("Failed to create folder. Check server logs for details.") from e
 
 
 @mcp.tool
@@ -146,11 +146,11 @@ async def search_emails(
     ids = await client.search(folder=folder, criteria=criteria, limit=limit)
     return {"message_ids": ids, "count": len(ids)}
   except ValueError:
-    raise ToolError(f"Account not found: {account}")
+    raise ToolError(f"Account not found: {account}") from None
   except RateLimitError:
-    raise ToolError("Rate limit exceeded. Please try again later.")
-  except Exception:
-    raise ToolError("Failed to search emails. Check server logs for details.")
+    raise ToolError("Rate limit exceeded. Please try again later.") from None
+  except Exception as e:
+    raise ToolError("Failed to search emails. Check server logs for details.") from e
 
 
 @mcp.tool
@@ -180,11 +180,11 @@ async def get_email(
     msg = await client.fetch_message(message_id, folder=folder)
     return msg
   except ValueError:
-    raise ToolError(f"Account not found: {account}")
+    raise ToolError(f"Account not found: {account}") from None
   except RateLimitError:
-    raise ToolError("Rate limit exceeded. Please try again later.")
-  except Exception:
-    raise ToolError("Failed to fetch message. Check server logs for details.")
+    raise ToolError("Rate limit exceeded. Please try again later.") from None
+  except Exception as e:
+    raise ToolError("Failed to fetch message. Check server logs for details.") from e
 
 
 @mcp.tool
@@ -222,15 +222,15 @@ async def download_attachment(
     )
     return {"path": path, "filename": filename}
   except ValueError as e:
-    raise ToolError(str(e))
+    raise ToolError(str(e)) from e
   except FileNotFoundError:
-    raise ToolError(f"Attachment not found: {filename}")
+    raise ToolError(f"Attachment not found: {filename}") from None
   except SecurityError as e:
-    raise ToolError(str(e))
+    raise ToolError(str(e)) from e
   except RateLimitError:
-    raise ToolError("Rate limit exceeded. Please try again later.")
-  except Exception:
-    raise ToolError("Failed to download attachment. Check server logs for details.")
+    raise ToolError("Rate limit exceeded. Please try again later.") from None
+  except Exception as e:
+    raise ToolError("Failed to download attachment. Check server logs for details.") from e
 
 
 @mcp.tool
@@ -279,15 +279,15 @@ async def send_email(
     )
     return result
   except ValueError as e:
-    raise ToolError(str(e))
+    raise ToolError(str(e)) from e
   except WhitelistError as e:
-    raise ToolError(str(e))
+    raise ToolError(str(e)) from e
   except FileNotFoundError:
-    raise ToolError("Attachment file not found")
+    raise ToolError("Attachment file not found") from None
   except RateLimitError:
-    raise ToolError("Rate limit exceeded. Please try again later.")
-  except Exception:
-    raise ToolError("Failed to send email. Check server logs for details.")
+    raise ToolError("Rate limit exceeded. Please try again later.") from None
+  except Exception as e:
+    raise ToolError("Failed to send email. Check server logs for details.") from e
 
 
 @mcp.tool
@@ -333,13 +333,13 @@ async def reply_email(
     )
     return result
   except ValueError as e:
-    raise ToolError(str(e))
+    raise ToolError(str(e)) from e
   except WhitelistError as e:
-    raise ToolError(str(e))
+    raise ToolError(str(e)) from e
   except RateLimitError:
-    raise ToolError("Rate limit exceeded. Please try again later.")
-  except Exception:
-    raise ToolError("Failed to send reply. Check server logs for details.")
+    raise ToolError("Rate limit exceeded. Please try again later.") from None
+  except Exception as e:
+    raise ToolError("Failed to send reply. Check server logs for details.") from e
 
 
 @mcp.tool
@@ -370,11 +370,11 @@ async def move_email(
     await client.move_message(message_id, source_folder, dest_folder)
     return {"status": "moved", "message_id": message_id, "dest_folder": dest_folder}
   except ValueError:
-    raise ToolError(f"Account not found: {account}")
+    raise ToolError(f"Account not found: {account}") from None
   except RateLimitError:
-    raise ToolError("Rate limit exceeded. Please try again later.")
-  except Exception:
-    raise ToolError("Failed to move message. Check server logs for details.")
+    raise ToolError("Rate limit exceeded. Please try again later.") from None
+  except Exception as e:
+    raise ToolError("Failed to move message. Check server logs for details.") from e
 
 
 @mcp.tool
@@ -405,11 +405,11 @@ async def delete_email(
     await client.delete_message(message_id, folder=folder, expunge=expunge)
     return {"status": "deleted", "message_id": message_id}
   except ValueError:
-    raise ToolError(f"Account not found: {account}")
+    raise ToolError(f"Account not found: {account}") from None
   except RateLimitError:
-    raise ToolError("Rate limit exceeded. Please try again later.")
-  except Exception:
-    raise ToolError("Failed to delete message. Check server logs for details.")
+    raise ToolError("Rate limit exceeded. Please try again later.") from None
+  except Exception as e:
+    raise ToolError("Failed to delete message. Check server logs for details.") from e
 
 
 @mcp.tool
@@ -438,11 +438,11 @@ async def mark_email_read(
     await client.mark_message(message_id, folder, "\\Seen", "add")
     return {"status": "marked_read", "message_id": message_id}
   except ValueError:
-    raise ToolError(f"Account not found: {account}")
+    raise ToolError(f"Account not found: {account}") from None
   except RateLimitError:
-    raise ToolError("Rate limit exceeded. Please try again later.")
-  except Exception:
-    raise ToolError("Failed to mark message as read. Check server logs for details.")
+    raise ToolError("Rate limit exceeded. Please try again later.") from None
+  except Exception as e:
+    raise ToolError("Failed to mark message as read. Check server logs for details.") from e
 
 
 # --- Resources ---

@@ -93,7 +93,7 @@ class IMAPClient:
         raise RuntimeError(f"Configuration error: {e}") from e
       except TimeoutError:
         # Connection timeout (asyncio.TimeoutError is an alias for TimeoutError in 3.11+)
-        raise RuntimeError("Connection timed out. Check server availability.")
+        raise RuntimeError("Connection timed out. Check server availability.") from None
       except ConnectionError as e:
         # Network-level disconnection
         raise RuntimeError(f"Connection lost: {e}") from e
@@ -283,7 +283,7 @@ class IMAPClient:
       # Remove 'SEARCH' prefix if present (some servers include it)
       if ids and ids[0].upper() == "SEARCH":
         ids = ids[1:]
-      return ids[-limit:] if limit else ids  # type: ignore[no-any-return]
+      return ids[-limit:] if limit else ids
 
   async def fetch_message(
     self,
@@ -318,7 +318,7 @@ class IMAPClient:
           raw_message = bytes(item)
         elif isinstance(item, tuple) and len(item) == 2:
           # Alternative format
-          raw_message = item[1] if isinstance(item[1], (bytes, bytearray)) else None  # type: ignore[assignment]
+          raw_message = item[1] if isinstance(item[1], (bytes, bytearray)) else None
         elif b"FLAGS" in item:
           # format: b' FLAGS (...)'
           # TODO: extract more flags?
@@ -506,7 +506,7 @@ class IMAPClient:
                       file_path.unlink()
                     except OSError:
                       pass
-                    raise SecurityError("Download escaped workspace confinement")
+                    raise SecurityError("Download escaped workspace confinement") from None
 
                   log_attachment_download(self.account.name, filename, real_path)
                   return str(real_path)

@@ -1,6 +1,7 @@
 """Tests for configuration module."""
 
 import json
+import os
 
 from simple_email_gw.config import EmailAccount, RateLimitConfig, ServerConfig
 
@@ -106,8 +107,13 @@ class TestServerConfig:
     assert accounts[0].name == "work"
     assert accounts[1].name == "personal"
 
-  def test_empty_config(self):
+  def test_empty_config(self, monkeypatch):
     """Test empty configuration returns empty list."""
+    # Clear all EMAIL_ environment variables to ensure clean state
+    for key in list(os.environ.keys()):
+      if key.startswith("EMAIL_"):
+        monkeypatch.delenv(key, raising=False)
+
     config = ServerConfig()
     accounts = config.get_accounts()
     assert len(accounts) == 0

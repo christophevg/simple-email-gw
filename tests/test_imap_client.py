@@ -4,7 +4,7 @@ These tests verify the async IMAPClient directly, including message parsing
 and threading header extraction.
 """
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 

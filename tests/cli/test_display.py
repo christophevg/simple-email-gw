@@ -14,6 +14,7 @@ from rich.panel import Panel
 from rich.table import Table
 
 from simple_email_gw.cli.display import (
+  EmailDraft,
   confirm_send,
   display_accounts,
   display_email,
@@ -22,7 +23,6 @@ from simple_email_gw.cli.display import (
   display_folders,
   display_success,
   display_warning,
-  EmailDraft,
   get_body_input,
   get_recipients_input,
 )
@@ -1750,7 +1750,6 @@ class TestPreviewDisplay:
     When: Preview displayed
     Then: CC/BCC shown as '(none)' or omitted
     """
-    console = Console()
     draft = EmailDraft(to=["a@x.com"], subject="Test", body="Body")
     preview = draft.to_preview_dict()
     assert preview["cc"] == "(none)"
@@ -1762,7 +1761,6 @@ class TestPreviewDisplay:
     When: Preview displayed
     Then: Subject shown as '(no subject)'
     """
-    console = Console()
     draft = EmailDraft(to=["a@x.com"], subject="", body="Body")
     preview = draft.to_preview_dict()
     assert preview["subject"] == "(no subject)"

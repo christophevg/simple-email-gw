@@ -93,7 +93,7 @@ class SyncIMAPClient:
     Raises:
       RuntimeError: If connection fails
     """
-    return self._run_coroutine(self._async_client.connect())  # type: ignore[no-any-return]
+    return self._run_coroutine(self._async_client.connect())
 
   def disconnect(self) -> None:
     """Close IMAP connection and stop background event loop."""

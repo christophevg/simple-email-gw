@@ -20,8 +20,7 @@ from rich.text import Text
 
 from simple_email_gw.cli.theme import get_theme_manager
 from simple_email_gw.config import get_recipient_whitelist
-from simple_email_gw.smtp.client import validate_email, WhitelistError
-
+from simple_email_gw.smtp.client import WhitelistError, validate_email
 
 # Maximum body size in bytes (10 MB)
 MAX_BODY_SIZE = 10 * 1024 * 1024
@@ -306,7 +305,7 @@ def display_warning(console: Console, message: str) -> None:
 async def get_recipients_input(
   console: Console,
   prompt: str,
-  session: PromptSession | None = None,
+  session: PromptSession[str] | None = None,
 ) -> list[str]:
   """Interactive async input for email recipients with validation.
 
@@ -360,7 +359,7 @@ async def get_recipients_input(
 async def get_body_input(
   console: Console,
   prompt: str,
-  session: PromptSession | None = None,
+  session: PromptSession[str] | None = None,
 ) -> str:
   """Multi-line body input terminated by Ctrl+D (EOF).
 
@@ -406,7 +405,7 @@ async def get_body_input(
 async def confirm_send(
   console: Console,
   draft: EmailDraft,
-  session: PromptSession | None = None,
+  session: PromptSession[str] | None = None,
   from_addr: str = "",
 ) -> bool | None:
   """Display email preview and confirm sending with 3-state return.

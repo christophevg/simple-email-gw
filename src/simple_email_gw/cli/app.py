@@ -23,20 +23,20 @@ from rich.console import Console
 from rich.table import Table
 
 from simple_email_gw.cli.display import (
+  EmailDraft,
   confirm_send,
   display_error,
   display_success,
   display_warning,
-  EmailDraft,
   get_body_input,
   get_recipients_input,
 )
-from simple_email_gw.safety.sanitize import sanitize_subject
-from simple_email_gw.smtp.client import validate_email, WhitelistError
 from simple_email_gw.cli.session import Session
 from simple_email_gw.cli.theme import ThemeType, get_theme_manager
 from simple_email_gw.config import ServerConfig, get_accounts, get_recipient_whitelist
 from simple_email_gw.connections.pool import RateLimitError
+from simple_email_gw.safety.sanitize import sanitize_subject
+from simple_email_gw.smtp.client import WhitelistError, validate_email
 
 logger = logging.getLogger(__name__)
 
