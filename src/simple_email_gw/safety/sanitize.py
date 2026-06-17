@@ -11,6 +11,14 @@ Security Note:
 
 from __future__ import annotations
 
+import os
+
+# Default maximum size for IMAP APPEND (25 MB)
+APPEND_MAX_SIZE_DEFAULT = 25 * 1024 * 1024
+
+# Allowlisted IMAP APPEND flags
+APPEND_FLAG_ALLOWLIST = {"\\Seen", "\\Draft", "\\Answered", "\\Flagged"}
+
 
 def sanitize_message_id(message_id: str) -> str:
   """Validate and sanitize Message-ID for header safety.
@@ -247,6 +255,41 @@ def sanitize_filename(filename: str) -> str:
   if "\r" in filename or "\n" in filename or "\x00" in filename:
     raise ValueError("Filename contains invalid characters")
   return filename
+
+
+def validate_append_flags(flags: list[str] | None) -> list[str]:
+  """Validate IMAP APPEND flags against the allowlist.
+
+  Args:
+    flags: Optional list of IMAP flags.
+
+  Returns:
+    The validated flags as a list.
+
+  Raises:
+    ValueError: If any flag is not in the allowlist.
+  """
+  if flags is None:
+    return []
+  for flag in flags:
+    if flag not in APPEND_FLAG_ALLOWLIST:
+      raise ValueError(f"Invalid IMAP flag: {flag}")
+  return list(flags)
+
+
+def get_append_max_size() -> int:
+  """Return the maximum allowed size for IMAP APPEND in bytes.
+
+  Defaults to APPEND_MAX_SIZE_DEFAULT (25 MB). Override with the
+  EMAIL_APPEND_MAX_SIZE environment variable.
+  """
+  env_value = os.environ.get("EMAIL_APPEND_MAX_SIZE")
+  if env_value:
+    try:
+      return int(env_value)
+    except ValueError:
+      pass
+  return APPEND_MAX_SIZE_DEFAULT
 
 
 def sanitize_message_id_numeric(message_id: str) -> str:

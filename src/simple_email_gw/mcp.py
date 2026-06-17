@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import base64
+import email
 import json
-from typing import Annotated
+from typing import Annotated, Any
 
 from fastmcp import Context, FastMCP
 from fastmcp.exceptions import ToolError
@@ -12,7 +14,15 @@ from pydantic import Field
 from simple_email_gw.connections.pool import RateLimitError, get_pool
 from simple_email_gw.imap.client import SecurityError
 from simple_email_gw.safety.audit import log_event
-from simple_email_gw.safety.sanitize import validate_folder_name
+from simple_email_gw.safety.sanitize import (
+  get_append_max_size,
+  sanitize_folder_name,
+  sanitize_message_id,
+  sanitize_references,
+  sanitize_subject,
+  validate_append_flags,
+  validate_folder_name,
+)
 from simple_email_gw.smtp.client import WhitelistError
 
 # Create FastMCP server
@@ -245,8 +255,14 @@ async def send_email(
   attachments: Annotated[
     list[str] | None, Field(default=None, description="Attachment paths")
   ] = None,
+  append_to_sent: Annotated[
+    bool, Field(default=False, description="Append a copy to the Sent folder after sending")
+  ] = False,
+  append_folder: Annotated[
+    str | None, Field(default=None, description="Override destination folder for auto-append")
+  ] = None,
   ctx: Context | None = None,
-) -> dict[str, str]:
+) -> dict[str, Any]:
   """Send a new email message.
 
   Args:
@@ -258,6 +274,8 @@ async def send_email(
     bcc: Optional list of BCC addresses.
     html_body: Optional HTML body content.
     attachments: Optional list of file paths to attach.
+    append_to_sent: Whether to append a copy to the Sent folder after sending.
+    append_folder: Optional override destination folder for auto-append.
 
   Returns:
     Dictionary with status and recipient information.
@@ -267,8 +285,9 @@ async def send_email(
 
   try:
     pool = await get_pool()
-    client = await pool.get_smtp_client(account)
-    result = await client.send_email(
+    smtp_client = await pool.get_smtp_client(account)
+    imap_client = await pool.get_imap_client(account)
+    result = await smtp_client.send_email(
       to=to,
       subject=subject,
       body=body,
@@ -276,6 +295,9 @@ async def send_email(
       bcc=bcc,
       html_body=html_body,
       attachments=attachments,
+      append_to_sent=append_to_sent,
+      append_folder=append_folder,
+      imap_client=imap_client,
     )
     return result
   except ValueError as e:
@@ -301,8 +323,14 @@ async def reply_email(
     list[str] | None, Field(default=None, description="Thread references")
   ] = None,
   html_body: Annotated[str | None, Field(default=None, description="HTML body")] = None,
+  append_to_sent: Annotated[
+    bool, Field(default=False, description="Append a copy to the Sent folder after sending")
+  ] = False,
+  append_folder: Annotated[
+    str | None, Field(default=None, description="Override destination folder for auto-append")
+  ] = None,
   ctx: Context | None = None,
-) -> dict[str, str]:
+) -> dict[str, Any]:
   """Reply to an existing email thread.
 
   Args:
@@ -311,8 +339,10 @@ async def reply_email(
     subject: Email subject (should include Re: prefix).
     body: Plain text body content.
     in_reply_to: The Message-ID of the email being replied to.
-    references: Optional list of Message-IDs in the thread.
+    references: Optional list of Message-IDs in the thread history.
     html_body: Optional HTML body content.
+    append_to_sent: Whether to append a copy to the Sent folder after sending.
+    append_folder: Optional override destination folder for auto-append.
 
   Returns:
     Dictionary with status and recipient information.
@@ -322,14 +352,18 @@ async def reply_email(
 
   try:
     pool = await get_pool()
-    client = await pool.get_smtp_client(account)
-    result = await client.reply_email(
+    smtp_client = await pool.get_smtp_client(account)
+    imap_client = await pool.get_imap_client(account)
+    result = await smtp_client.reply_email(
       to=to,
       subject=subject,
       body=body,
       in_reply_to=in_reply_to,
       references=references,
       html_body=html_body,
+      append_to_sent=append_to_sent,
+      append_folder=append_folder,
+      imap_client=imap_client,
     )
     return result
   except ValueError as e:
@@ -340,6 +374,118 @@ async def reply_email(
     raise ToolError("Rate limit exceeded. Please try again later.") from None
   except Exception as e:
     raise ToolError("Failed to send reply. Check server logs for details.") from e
+
+
+@mcp.tool
+async def append_email(
+  account: Annotated[str, Field(description="Account name")],
+  folder: Annotated[str, Field(default="Sent", description="Destination folder")] = "Sent",
+  *,
+  raw_message: Annotated[str, Field(description="Base64-encoded RFC822 message")],
+  flags: Annotated[
+    list[str] | None, Field(default=None, description="Optional IMAP flags such as [\\Seen]")
+  ] = None,
+  ctx: Context | None = None,
+) -> dict[str, str]:
+  """Append a raw RFC822 message to an IMAP folder.
+
+  Args:
+    account: The account name.
+    folder: The destination folder (default: Sent).
+    raw_message: Base64-encoded RFC822 message content.
+    flags: Optional IMAP flags such as [\\Seen].
+
+  Returns:
+    Dictionary with status and folder name.
+  """
+  if ctx:
+    await ctx.info(f"Appending message to {folder} for account: {account}")
+
+  # Validate folder name
+  try:
+    validated_folder = validate_folder_name(folder)
+  except ValueError as e:
+    raise ToolError(str(e)) from e
+
+  # Validate flags
+  try:
+    validated_flags = validate_append_flags(flags)
+  except ValueError as e:
+    raise ToolError(str(e)) from e
+
+  # Decode base64 message content
+  try:
+    message_bytes = base64.b64decode(raw_message, validate=True)
+  except Exception as e:
+    raise ToolError("Invalid message content") from e
+
+  if not message_bytes:
+    raise ToolError("Invalid message content")
+  if b"\x00" in message_bytes:
+    raise ToolError("Invalid message content")
+  if len(message_bytes) > get_append_max_size():
+    raise ToolError("Message exceeds maximum size")
+
+  # Re-parse and sanitize envelope/threading headers
+  try:
+    msg = email.message_from_bytes(message_bytes)
+  except Exception as e:
+    raise ToolError("Invalid message content") from e
+
+  for header in ("Subject", "Message-ID", "In-Reply-To", "References"):
+    value = msg.get(header)
+    if value is not None and ("\r" in value or "\n" in value):
+      raise ToolError("Invalid message content")
+
+  try:
+    subject = msg.get("Subject")
+    if subject:
+      msg.replace_header("Subject", sanitize_subject(subject))
+
+    message_id = msg.get("Message-ID")
+    if message_id:
+      msg.replace_header("Message-ID", sanitize_message_id(message_id))
+
+    in_reply_to = msg.get("In-Reply-To")
+    if in_reply_to:
+      msg.replace_header("In-Reply-To", sanitize_message_id(in_reply_to))
+
+    references = msg.get("References")
+    if references:
+      refs = references.split()
+      msg.replace_header("References", " ".join(sanitize_references(refs)))
+  except ValueError as e:
+    raise ToolError("Invalid message content") from e
+
+  # Reject CRLF in address headers
+  for header in ("From", "To", "Cc", "Bcc"):
+    value = msg.get(header)
+    if value and ("\r" in value or "\n" in value):
+      raise ToolError("Invalid message content")
+
+  final_bytes = msg.as_bytes()
+  safe_folder = sanitize_folder_name(validated_folder)
+
+  try:
+    pool = await get_pool()
+    client = await pool.get_imap_client(account)
+    result = await client.append_message(
+      folder=safe_folder,
+      message_bytes=final_bytes,
+      flags=validated_flags,
+    )
+    return result
+  except ValueError as e:
+    error_msg = str(e)
+    if "Account not found" in error_msg or "not found" in error_msg.lower():
+      raise ToolError(f"Account not found: {account}") from None
+    raise ToolError(error_msg) from e
+  except RateLimitError:
+    raise ToolError("Rate limit exceeded. Please try again later.") from None
+  except RuntimeError as e:
+    raise ToolError(str(e)) from e
+  except Exception as e:
+    raise ToolError("Failed to append message. Check server logs for details.") from e
 
 
 @mcp.tool

@@ -380,3 +380,224 @@ class TestCreateFolder:
         await client.create_folder("Test")
 
     assert lock_acquired is True
+
+
+class TestFindSentFolder:
+  """Tests for IMAPClient.find_sent_folder method."""
+
+  @pytest.fixture
+  def account(self):
+    return EmailAccount(
+      name="test",
+      imap_host="imap.test.com",
+      imap_port=993,
+      smtp_host="smtp.test.com",
+      smtp_port=587,
+      username="test@test.com",
+      password="test_password",
+      auth_method="password",
+    )
+
+  @pytest.mark.asyncio
+  async def test_find_sent_folder_by_special_use_flag(self, account):
+    """Sent folder is detected via the \\Sent special-use flag."""
+    client = IMAPClient(account)
+    with patch.object(client, "list_folders", new_callable=AsyncMock) as mock_list:
+      mock_list.return_value = [
+        {"name": "INBOX", "flags": ["\\HasNoChildren"]},
+        {"name": "Sent Items", "flags": ["\\Sent", "\\HasNoChildren"]},
+      ]
+      result = await client.find_sent_folder()
+
+    assert result == "Sent Items"
+
+  @pytest.mark.asyncio
+  async def test_find_sent_folder_special_use_case_insensitive(self, account):
+    """Sent detection is case-insensitive for the flag name."""
+    client = IMAPClient(account)
+    with patch.object(client, "list_folders", new_callable=AsyncMock) as mock_list:
+      mock_list.return_value = [
+        {"name": "INBOX", "flags": ["\\HasNoChildren"]},
+        {"name": "Sent", "flags": ["\\sent"]},
+      ]
+      result = await client.find_sent_folder()
+
+    assert result == "Sent"
+
+  @pytest.mark.asyncio
+  async def test_find_sent_folder_fallback_order(self, account):
+    """When no \\Sent flag exists, fallback names are tried in order."""
+    client = IMAPClient(account)
+    with patch.object(client, "list_folders", new_callable=AsyncMock) as mock_list:
+      mock_list.return_value = [
+        {"name": "INBOX", "flags": []},
+        {"name": "Sent Messages", "flags": []},
+      ]
+      result = await client.find_sent_folder()
+
+    assert result == "Sent Messages"
+
+  @pytest.mark.asyncio
+  async def test_find_sent_folder_returns_none_when_missing(self, account):
+    """When no Sent candidate exists, return None."""
+    client = IMAPClient(account)
+    with patch.object(client, "list_folders", new_callable=AsyncMock) as mock_list:
+      mock_list.return_value = [{"name": "INBOX", "flags": []}]
+      result = await client.find_sent_folder()
+
+    assert result is None
+
+
+class TestAppendMessage:
+  """Tests for IMAPClient.append_message method."""
+
+  @pytest.fixture
+  def account(self):
+    return EmailAccount(
+      name="test",
+      imap_host="imap.test.com",
+      imap_port=993,
+      smtp_host="smtp.test.com",
+      smtp_port=587,
+      username="test@test.com",
+      password="test_password",
+      auth_method="password",
+    )
+
+  @pytest.mark.asyncio
+  async def test_append_message_success(self, account):
+    """A valid append returns the appended status and folder."""
+    client = IMAPClient(account)
+    mock_imap = AsyncMock()
+    mock_imap.append = AsyncMock(return_value=("OK", []))
+
+    message_bytes = (
+      b"From: sender@example.com\r\n"
+      b"To: recipient@example.com\r\n"
+      b"Subject: Test\r\n"
+      b"Message-ID: <msg123@example.com>\r\n"
+      b"\r\n"
+      b"Body"
+    )
+
+    with patch.object(client, "connect", new_callable=AsyncMock) as mock_connect:
+      mock_connect.return_value = mock_imap
+      with patch("simple_email_gw.imap.client.log_email_appended") as mock_log:
+        result = await client.append_message("Sent", message_bytes, flags=["\\Seen"])
+
+    assert result == {"status": "appended", "folder": "Sent"}
+    mock_imap.append.assert_awaited_once()
+    append_call = mock_imap.append.call_args
+    assert append_call.kwargs["mailbox"] == "Sent"
+    assert append_call.kwargs["flags"] == "(\\Seen)"
+    assert append_call.args[0] == message_bytes
+    mock_log.assert_called_once()
+    assert mock_log.call_args.kwargs["success"] is True
+
+  @pytest.mark.asyncio
+  async def test_append_message_rejects_invalid_folder(self, account):
+    """Invalid folder names raise ValueError before APPEND."""
+    client = IMAPClient(account)
+    with pytest.raises(ValueError, match="invalid characters"):
+      await client.append_message("Bad\r\nFolder", b"body")
+
+  @pytest.mark.asyncio
+  async def test_append_message_rejects_invalid_flags(self, account):
+    """Flags outside the allowlist raise ValueError."""
+    client = IMAPClient(account)
+    with pytest.raises(ValueError, match="Invalid IMAP flag"):
+      await client.append_message("Sent", b"body", flags=["\\Deleted"])
+
+  @pytest.mark.asyncio
+  async def test_append_message_rejects_nul_bytes(self, account):
+    """Messages containing NUL bytes are rejected."""
+    client = IMAPClient(account)
+    with pytest.raises(ValueError, match="NUL"):
+      await client.append_message("Sent", b"\x00body")
+
+  @pytest.mark.asyncio
+  async def test_append_message_rejects_oversized(self, account, monkeypatch):
+    """Messages exceeding the configured max size are rejected."""
+    monkeypatch.setenv("EMAIL_APPEND_MAX_SIZE", "10")
+    client = IMAPClient(account)
+    with pytest.raises(ValueError, match="exceeds maximum size"):
+      await client.append_message("Sent", b"x" * 11)
+
+  @pytest.mark.asyncio
+  async def test_append_message_rejects_naive_internal_date(self, account):
+    """internal_date must be timezone-aware."""
+    from datetime import datetime
+
+    client = IMAPClient(account)
+    with pytest.raises(ValueError, match="timezone-aware"):
+      await client.append_message("Sent", b"body", internal_date=datetime.now())
+
+  @pytest.mark.asyncio
+  async def test_append_message_maps_overquota(self, account):
+    """[OVERQUOTA] response is mapped to a generic quota message."""
+    client = IMAPClient(account)
+    mock_imap = AsyncMock()
+    mock_imap.append = AsyncMock(return_value=("NO", [b"[OVERQUOTA] Mailbox full"]))
+
+    with patch.object(client, "connect", new_callable=AsyncMock) as mock_connect:
+      mock_connect.return_value = mock_imap
+      with pytest.raises(RuntimeError, match="Mailbox quota exceeded"):
+        await client.append_message("Sent", b"body")
+
+  @pytest.mark.asyncio
+  async def test_append_message_maps_noperm(self, account):
+    """[NOPERM] response is mapped to a generic permission message."""
+    client = IMAPClient(account)
+    mock_imap = AsyncMock()
+    mock_imap.append = AsyncMock(return_value=("NO", [b"[NOPERM] Permission denied"]))
+
+    with patch.object(client, "connect", new_callable=AsyncMock) as mock_connect:
+      mock_connect.return_value = mock_imap
+      with pytest.raises(RuntimeError, match="Permission denied"):
+        await client.append_message("Sent", b"body")
+
+  @pytest.mark.asyncio
+  async def test_append_message_maps_trycreate(self, account):
+    """[TRYCREATE] response is mapped to a folder-not-found message."""
+    client = IMAPClient(account)
+    mock_imap = AsyncMock()
+    mock_imap.append = AsyncMock(return_value=("NO", [b"[TRYCREATE] Folder missing"]))
+
+    with patch.object(client, "connect", new_callable=AsyncMock) as mock_connect:
+      mock_connect.return_value = mock_imap
+      with pytest.raises(RuntimeError, match="Folder does not exist"):
+        await client.append_message("Sent", b"body")
+
+  @pytest.mark.asyncio
+  async def test_append_message_generic_error(self, account):
+    """Generic NO response is mapped to a generic failure message."""
+    client = IMAPClient(account)
+    mock_imap = AsyncMock()
+    mock_imap.append = AsyncMock(return_value=("NO", []))
+
+    with patch.object(client, "connect", new_callable=AsyncMock) as mock_connect:
+      mock_connect.return_value = mock_imap
+      with pytest.raises(RuntimeError, match="Failed to append message"):
+        await client.append_message("Sent", b"body")
+
+  @pytest.mark.asyncio
+  async def test_append_message_uses_operation_lock(self, account):
+    """append_message serializes via the operation lock."""
+    client = IMAPClient(account)
+    lock_acquired = False
+
+    original_acquire = client._operation_lock.acquire
+
+    async def tracked_acquire():
+      nonlocal lock_acquired
+      lock_acquired = True
+      return await original_acquire()
+
+    with patch.object(client._operation_lock, "acquire", side_effect=tracked_acquire):
+      mock_imap = AsyncMock()
+      mock_imap.append = AsyncMock(return_value=("OK", []))
+      with patch.object(client, "connect", new_callable=AsyncMock) as mock_connect:
+        mock_connect.return_value = mock_imap
+        await client.append_message("Sent", b"body")
+
+    assert lock_acquired is True

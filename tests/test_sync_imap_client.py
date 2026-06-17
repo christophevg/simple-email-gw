@@ -1108,3 +1108,95 @@ class TestSyncIMAPClientCreateFolder:
           client.create_folder("Sent")
     finally:
       client.disconnect()
+
+
+class TestSyncIMAPClientFindSentFolder:
+  """Test find_sent_folder delegation."""
+
+  def test_find_sent_folder_delegates_to_async_client(self):
+    """Sync wrapper delegates find_sent_folder to async client."""
+    account = EmailAccount(
+      name="test",
+      imap_host="imap.example.com",
+      smtp_host="smtp.example.com",
+      username="test@example.com",
+    )
+    client = SyncIMAPClient(account)
+    try:
+      with patch.object(
+        client._async_client, "find_sent_folder", new_callable=AsyncMock
+      ) as mock_find:
+        mock_find.return_value = "Sent"
+        result = client.find_sent_folder()
+        mock_find.assert_called_once()
+        assert result == "Sent"
+    finally:
+      client.disconnect()
+
+  def test_find_sent_folder_returns_none(self):
+    """Sync wrapper returns None when no Sent folder is found."""
+    account = EmailAccount(
+      name="test",
+      imap_host="imap.example.com",
+      smtp_host="smtp.example.com",
+      username="test@example.com",
+    )
+    client = SyncIMAPClient(account)
+    try:
+      with patch.object(
+        client._async_client, "find_sent_folder", new_callable=AsyncMock
+      ) as mock_find:
+        mock_find.return_value = None
+        result = client.find_sent_folder()
+        assert result is None
+    finally:
+      client.disconnect()
+
+
+class TestSyncIMAPClientAppendMessage:
+  """Test append_message delegation."""
+
+  def test_append_message_delegates_to_async_client(self):
+    """Sync wrapper delegates append_message with correct params."""
+    account = EmailAccount(
+      name="test",
+      imap_host="imap.example.com",
+      smtp_host="smtp.example.com",
+      username="test@example.com",
+    )
+    client = SyncIMAPClient(account)
+    try:
+      with patch.object(
+        client._async_client, "append_message", new_callable=AsyncMock
+      ) as mock_append:
+        mock_append.return_value = {"status": "appended", "folder": "Sent"}
+        result = client.append_message("Sent", b"body", flags=["\\Seen"])
+        mock_append.assert_called_once_with(
+          folder="Sent",
+          message_bytes=b"body",
+          flags=["\\Seen"],
+          internal_date=None,
+        )
+        assert result == {"status": "appended", "folder": "Sent"}
+    finally:
+      client.disconnect()
+
+  def test_append_message_returns_dict(self):
+    """Sync wrapper returns the dict from the async client."""
+    account = EmailAccount(
+      name="test",
+      imap_host="imap.example.com",
+      smtp_host="smtp.example.com",
+      username="test@example.com",
+    )
+    client = SyncIMAPClient(account)
+    try:
+      with patch.object(
+        client._async_client, "append_message", new_callable=AsyncMock
+      ) as mock_append:
+        mock_append.return_value = {"status": "appended", "folder": "Archive"}
+        result = client.append_message("Archive", b"body")
+        assert result["status"] == "appended"
+        assert result["folder"] == "Archive"
+    finally:
+      client.disconnect()

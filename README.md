@@ -245,11 +245,25 @@ See the `security documentation <https://simple-email-gw.readthedocs.io/en/lates
 | `search_emails` | Search messages by criteria |
 | `get_email` | Fetch single message |
 | `download_attachment` | Download attachment to workspace |
-| `send_email` | Send new email |
-| `reply_email` | Reply to thread |
+| `send_email` | Send new email (optional auto-save to Sent) |
+| `reply_email` | Reply to thread (optional auto-save to Sent) |
 | `move_email` | Move between folders |
 | `delete_email` | Delete message |
 | `mark_email_read` | Mark message as read |
+| `append_email` | Append a raw RFC822 message to an IMAP folder |
+
+### Auto-Save Sent Folder
+
+`send_email` and `reply_email` support optional auto-append to the account's Sent folder:
+
+- `append_to_sent: bool` - Append a copy after a successful SMTP send (default: `False`).
+- `append_folder: str | None` - Override the destination folder (default: auto-detected Sent folder).
+
+The Sent folder is detected using the IMAP `\Sent` special-use flag when available, with a deterministic fallback to `Sent`, `Sent Items`, and `Sent Messages`. If auto-append fails, the send still succeeds and a warning is returned.
+
+### Append Email Tool
+
+`append_email` performs a pure IMAP `APPEND` of a base64-encoded RFC822 message. The message is re-parsed, threading headers are sanitized, and flags are restricted to the allowlist `\Seen`, `\Draft`, `\Answered`, `\Flagged`.
 
 See the `API documentation <https://simple-email-gw.readthedocs.io/en/latest/api.html>`_ for complete API reference.
 

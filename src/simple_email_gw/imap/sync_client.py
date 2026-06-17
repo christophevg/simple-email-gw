@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import threading
+from datetime import datetime
 from typing import Any
 
 from aioimaplib import IMAP4_SSL
@@ -114,6 +115,41 @@ class SyncIMAPClient:
       RuntimeError: If operation fails
     """
     return self._run_coroutine(self._async_client.list_folders())  # type: ignore[no-any-return]
+
+  def find_sent_folder(self) -> str | None:
+    """Return the account's Sent folder name.
+
+    Returns:
+      Sent folder name, or None if no candidate is found.
+    """
+    return self._run_coroutine(self._async_client.find_sent_folder())  # type: ignore[no-any-return]
+
+  def append_message(
+    self,
+    folder: str,
+    message_bytes: bytes,
+    flags: list[str] | None = None,
+    internal_date: datetime | None = None,
+  ) -> dict[str, str]:
+    """Append a message to an IMAP folder.
+
+    Args:
+      folder: Target folder name.
+      message_bytes: RFC822 message as bytes.
+      flags: Optional IMAP flags.
+      internal_date: Optional timezone-aware datetime.
+
+    Returns:
+      Dict with 'status' and 'folder' keys.
+    """
+    return self._run_coroutine(  # type: ignore[no-any-return]
+      self._async_client.append_message(
+        folder=folder,
+        message_bytes=message_bytes,
+        flags=flags,
+        internal_date=internal_date,
+      )
+    )
 
   def create_folder(self, folder_name: str) -> bool:
     """Create a new folder/mailbox.

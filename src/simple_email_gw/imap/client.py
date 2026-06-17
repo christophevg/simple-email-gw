@@ -10,6 +10,7 @@ import os
 import re
 import socket
 import ssl
+from datetime import datetime
 from email.header import decode_header
 from pathlib import Path
 from typing import Any
@@ -18,10 +19,16 @@ import aioimaplib
 from aioimaplib import IMAP4_SSL
 
 from simple_email_gw.config import EmailAccount
-from simple_email_gw.safety.audit import log_attachment_download, log_auth_attempt
+from simple_email_gw.safety.audit import (
+  log_attachment_download,
+  log_auth_attempt,
+  log_email_appended,
+)
 from simple_email_gw.safety.sanitize import (
+  get_append_max_size,
   sanitize_folder_name,
   sanitize_message_id_numeric,
+  validate_append_flags,
   validate_folder_name,
 )
 
@@ -34,6 +41,25 @@ DEFAULT_WORKSPACE = Path(os.environ.get("EMAIL_WORKSPACE", "/tmp/email_workspace
 # Single quotes removed - not part of IMAP string syntax (RFC 3501 uses double quotes only)
 # Added @ . : % \ for valid IMAP SEARCH syntax (email addresses, dates, flags)
 IMAP_CRITERIA_PATTERN = re.compile(r"^[\w\s\(\)\*\<\>\[\]=!\"@\.:%\\-]+$")
+
+# Common IMAP APPEND response codes mapped to generic error messages
+_APPEND_ERROR_MESSAGES: dict[str, str] = {
+  "[OVERQUOTA]": "Mailbox quota exceeded. Contact administrator.",
+  "[NOPERM]": "Permission denied. Check server logs for details.",
+  "[TRYCREATE]": "Folder does not exist",
+}
+
+
+def _decode_append_error(data: Any) -> str:
+  """Extract a sanitized error text from an IMAP APPEND response."""
+  if not data or not isinstance(data, list) or len(data) == 0:
+    return ""
+  first = data[0]
+  if isinstance(first, bytes):
+    return first.decode(errors="replace")
+  if isinstance(first, str):
+    return first
+  return ""
 
 
 class SecurityError(Exception):
@@ -217,6 +243,116 @@ class IMAPClient:
         raise RuntimeError("Failed to create folder")
 
       raise RuntimeError("Failed to create folder")
+
+  async def find_sent_folder(self) -> str | None:
+    """Return the account's Sent folder name.
+
+    Uses the IMAP \\Sent special-use flag if advertised; otherwise tries
+    common local names in a documented, deterministic order.
+
+    Returns:
+      Sent folder name, or None if no candidate is found.
+    """
+    folders = await self.list_folders()
+    for folder in folders:
+      flags = folder.get("flags", [])
+      if any(str(flag).upper() == r"\SENT" for flag in flags):
+        return folder["name"]
+
+    candidates = ["Sent", "Sent Items", "Sent Messages"]
+    names = {folder["name"] for folder in folders}
+    for candidate in candidates:
+      if candidate in names:
+        return candidate
+    return None
+
+  async def append_message(
+    self,
+    folder: str,
+    message_bytes: bytes,
+    flags: list[str] | None = None,
+    internal_date: datetime | None = None,
+  ) -> dict[str, str]:
+    """Append a message to an IMAP folder.
+
+    Args:
+      folder: Target folder name (e.g., "Sent").
+      message_bytes: RFC822 message as bytes.
+      flags: Optional IMAP flags from the allowlist.
+      internal_date: Optional timezone-aware datetime for the IMAP internal date.
+
+    Returns:
+      Dict with 'status' and 'folder' keys.
+
+    Raises:
+      ValueError: If folder name, flags, or message content is invalid.
+      RuntimeError: If the IMAP server rejects APPEND.
+    """
+    if not isinstance(message_bytes, bytes):
+      raise ValueError("Message must be provided as bytes")
+
+    # Validate folder name and flags
+    safe_folder = sanitize_folder_name(validate_folder_name(folder))
+    safe_flags = validate_append_flags(flags)
+
+    # Validate message content
+    if b"\x00" in message_bytes:
+      raise ValueError("Message contains NUL bytes")
+    if len(message_bytes) > get_append_max_size():
+      raise ValueError("Message exceeds maximum size")
+
+    # Validate internal date: only timezone-aware datetimes are allowed
+    if internal_date is not None:
+      if internal_date.tzinfo is None or internal_date.utcoffset() is None:
+        raise ValueError("internal_date must be timezone-aware")
+
+    flag_str = f"({' '.join(safe_flags)})" if safe_flags else None
+
+    async with self._operation_lock:
+      client = await self.connect()
+      try:
+        status, data = await client.append(
+          message_bytes,
+          mailbox=safe_folder,
+          flags=flag_str,
+          date=internal_date,
+        )
+      except Exception as e:
+        _logger.warning("IMAP APPEND failed: %s", e)
+        raise RuntimeError("Failed to append message. Check server logs for details.") from e
+
+      if status != "OK":
+        error_text = _decode_append_error(data)
+        _logger.warning("IMAP APPEND failed: %s", error_text)
+
+        if "[OVERQUOTA]" in error_text:
+          raise RuntimeError("Mailbox quota exceeded. Contact administrator.")
+        if "[NOPERM]" in error_text:
+          raise RuntimeError("Permission denied. Check server logs for details.")
+        if "[TRYCREATE]" in error_text:
+          raise RuntimeError("Folder does not exist")
+        raise RuntimeError("Failed to append message")
+
+    # Audit log the successful append
+    subject_prefix = ""
+    message_id: str | None = None
+    try:
+      parsed = email.message_from_bytes(message_bytes)
+      subject_prefix = parsed.get("Subject", "")[:50]
+      message_id = parsed.get("Message-ID", "")
+    except Exception:
+      pass
+
+    log_email_appended(
+      account=self.account.name,
+      folder=safe_folder,
+      success=True,
+      message_id=message_id,
+      subject_prefix=subject_prefix,
+      message_size=len(message_bytes),
+    )
+
+    return {"status": "appended", "folder": safe_folder}
 
   async def select_folder(self, folder: str = "INBOX") -> dict[str, str | int]:
     """Select a folder and return message count."""
