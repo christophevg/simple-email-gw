@@ -2,7 +2,7 @@
 
 **Date**: 2026-06-17
 **Task**: P1-001 - Add IMAP append tool and auto-save Sent folder support
-**Status**: Pending owner approval
+**Status**: Owner approved and implemented
 
 This document reconciles the API design review (`analysis/api-p1-001.md`) and the security review (`analysis/security-p1-001.md`) into a single implementation plan. Conflicts that required resolution are called out explicitly.
 
@@ -324,11 +324,11 @@ These map to the acceptance criteria already recorded in `TODO.md` for P1-001.
 
 ## 7. Pending Decision / Owner Approval
 
-This consensus plan is ready for implementation. Before engineering proceeds, the repository owner should confirm:
+This consensus plan was reviewed and approved by the repository owner. Implementation has been completed on branch `feature/p1-001-imap-append-sent`.
 
-1. The base64 + sanitization approach for `append_email` is acceptable.
-2. The 25 MB default size cap and `EMAIL_APPEND_MAX_SIZE` environment variable are acceptable.
-3. The `internal_date` parameter remains internal to `IMAPClient.append_message()` and is not exposed in the MCP tool.
-4. The `append_message` / `append_email` naming split is acceptable.
+Per owner feedback during review, the following additions were also made:
 
-Implementation should not begin until owner approval is recorded.
+- **CLI support**: The `append_email` functionality is exposed through the CLI, and the `send` / `reply` commands support `--append-to-sent` and `--append-folder` options.
+- **Documentation**: `README.md` was updated with the new MCP tools, CLI examples, and auto-append usage guidance.
+
+All acceptance criteria listed in section 6 have been implemented and verified by CI.
