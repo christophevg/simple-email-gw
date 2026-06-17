@@ -2,6 +2,52 @@
 
 ## Backlog
 
+### P1 - High
+
+- [ ] **P1-001: Add IMAP append tool and auto-save Sent folder support**
+  - Links to GitHub issue #1
+  - New `append_email` MCP tool for pure IMAP APPEND
+  - Optional auto-append to Sent folder in `send_email` (default `False`)
+  - Optional folder override for auto-append destination
+  - Same auto-append/folder-override for `reply_email`
+  - Preserve `Message-Id`, `References`, `In-Reply-To` headers
+  - Send succeeds even if append fails; append failure becomes a warning
+  - No `copy_email` tool
+  - Sent folder detected via IMAP `\Sent` special-use flag
+  - Add tests and README documentation
+  - **Acceptance Criteria**:
+    1. New `append_email` MCP tool for pure IMAP APPEND
+    2. Optional auto-append to Sent folder in `send_email` (default `False`)
+    3. Optional folder override for auto-append destination
+    4. Same auto-append/folder-override for `reply_email`
+    5. Preserve `Message-Id`, `References`, `In-Reply-To` headers
+    6. Send succeeds even if append fails; append failure becomes a warning
+    7. No `copy_email` tool
+    8. Sent folder detected via IMAP `\Sent` special-use flag
+    9. Add tests and README documentation
+    10. Destination folder validated/sanitized at MCP and IMAP layers
+    11. Caller-supplied message is base64-decoded, re-parsed, and headers sanitized before APPEND
+    12. APPEND flags restricted to allowlist `\Seen`, `\Draft`, `\Answered`, `\Flagged`
+    13. Appended message size capped at configurable maximum (default 25 MB)
+    14. Every APPEND operation recorded by `log_email_appended()`
+    15. IMAP APPEND errors mapped to generic user-facing messages
+  - **API Design Notes** (see `analysis/api-p1-001.md`):
+    - `append_email` tool accepts a base64-encoded RFC822 message for pure IMAP APPEND.
+    - `SMTPClient.send_email` / `reply_email` receive `append_to_sent`, `append_folder`, and an injected `imap_client`.
+    - Auto-append is best-effort: SMTP success is primary; append failure surfaces as a warning in the response.
+    - `IMAPClient` exposes `find_sent_folder()` using the `\Sent` special-use flag with common-name fallback.
+    - `SMTPClient` must generate a stable `Message-ID` before submission so the appended copy preserves it.
+  - **Consensus Plan**: `reporting/p1-001/consensus.md` — reconciles API and security reviews; implementation is pending owner approval.
+  - **Security Considerations** (see `analysis/security-p1-001.md` and consensus plan):
+    - Validate and sanitize destination folder name using existing `validate_folder_name()` / `sanitize_folder_name()` rules.
+    - Accept caller-supplied message as base64, then decode, re-parse, and sanitize envelope/threading headers.
+    - Restrict APPEND flags to a known allowlist (`\Seen`, `\Draft`, `\Answered`, `\Flagged`).
+    - Keep `internal_date` internal to `IMAPClient.append_message()` as a timezone-aware `datetime` only.
+    - Enforce a configurable maximum appended message size (default 25 MB via `EMAIL_APPEND_MAX_SIZE`).
+    - Add audit logging for every APPEND operation (`log_email_appended()`), including auto-append successes and failures.
+    - Map IMAP APPEND errors to generic user-facing messages; never forward raw server text or tracebacks to MCP clients.
+    - Ensure SMTP `send_email`/`reply_email` still return success when auto-append fails, with a safe structured warning.
+
 ### MCP Server Enhancement
 
 - [ ] **MCP-000: Set up local MCP testing**
