@@ -27,6 +27,8 @@ wrappers, connection pooling, and a FastMCP server.
 - Added `log_email_appended()` in `safety/audit.py`.
 - Added `get_append_max_size()` configurable via `EMAIL_APPEND_MAX_SIZE`
   (default 25 MB).
+- Fixed `SMTPClient._auto_append()` to log successful auto-appends with
+  `auto_append=True` (was only logging failure paths).
 
 ## Development Commands
 
