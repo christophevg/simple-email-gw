@@ -2257,10 +2257,10 @@ class TestWriteSentFlag:
   @pytest.mark.asyncio
   async def test_write_sent_flag_imap_unavailable_still_sends(self, mock_account):
     """
-    Given: User runs 'write --sent' but the session IMAP client cannot be obtained
+    Given: User runs 'write --sent --sent-folder Sent' but the session IMAP client cannot be obtained
     When: Email is sent
-    Then: A warning is shown, send_email is called with append_to_sent=False,
-      and the success panel is still displayed
+    Then: A warning is shown, send_email is called with append_to_sent=False and
+      append_folder=None, and the success panel is still displayed
     """
     cli = EmailCLI()
     cli.session.set_account(mock_account)
@@ -2278,7 +2278,7 @@ class TestWriteSentFlag:
           mock_smtp.return_value = mock_client
           with patch("simple_email_gw.cli.app.display_warning") as mock_warn:
             with patch("simple_email_gw.cli.app.display_success") as mock_success:
-              await cli._cmd_write(["--sent", "alice@example.com"])
+              await cli._cmd_write(["--sent", "--sent-folder", "Sent", "alice@example.com"])
               mock_client.send_email.assert_called_once()
               kwargs = mock_client.send_email.call_args.kwargs
               assert kwargs["append_to_sent"] is False
@@ -2464,10 +2464,10 @@ class TestReplySentFlag:
   @pytest.mark.asyncio
   async def test_reply_sent_flag_imap_unavailable_still_sends(self, mock_account):
     """
-    Given: User runs 'reply --sent' but the session IMAP client cannot be obtained
+    Given: User runs 'reply --sent --sent-folder Sent' but the session IMAP client cannot be obtained
     When: Reply is sent
-    Then: A warning is shown, reply_email is called with append_to_sent=False,
-      and the success panel is still displayed
+    Then: A warning is shown, reply_email is called with append_to_sent=False and
+      append_folder=None, and the success panel is still displayed
     """
     cli = EmailCLI()
     cli.session.set_account(mock_account)
@@ -2493,7 +2493,7 @@ class TestReplySentFlag:
           mock_smtp.return_value = mock_client
           with patch("simple_email_gw.cli.app.display_warning") as mock_warn:
             with patch("simple_email_gw.cli.app.display_success") as mock_success:
-              await cli._cmd_reply(["--sent", "123"])
+              await cli._cmd_reply(["--sent", "--sent-folder", "Sent", "123"])
               mock_client.reply_email.assert_called_once()
               kwargs = mock_client.reply_email.call_args.kwargs
               assert kwargs["append_to_sent"] is False
