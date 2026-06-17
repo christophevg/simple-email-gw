@@ -150,9 +150,14 @@ none:INBOX> use work                # Connect to 'work' account
 work:INBOX> folders                 # List folders
 work:INBOX> ls                      # List emails
 work:INBOX> show 42                 # View email #42
+work:INBOX> write --sent alice@example.com   # Compose and save copy to Sent
+work:INBOX> reply --sent 42         # Reply and save copy to Sent
+work:INBOX> write --sent --sent-folder "Sent Items" alice@example.com  # Custom Sent folder
 work:INBOX> theme                   # Toggle light/dark theme
 work:INBOX> quit                    # Exit CLI
 ```
+
+The `--sent` flag (also `--save-sent`) enables opt-in auto-append to the IMAP Sent folder after a successful send. It triggers a `Save a copy to Sent folder? (y/n)` prompt and can be combined with `--sent-folder` to override the destination folder.
 
 **Features:**
 
