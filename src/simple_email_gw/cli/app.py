@@ -808,6 +808,7 @@ class EmailCLI:
           self.console,
           f"Could not access IMAP client for Sent folder: {e}",
         )
+        final_append_to_sent = False
 
     # Send email
     try:
