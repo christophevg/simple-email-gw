@@ -100,7 +100,7 @@ class SyncSMTPClient:
     append_to_sent: bool = False,
     append_folder: str | None = None,
     imap_client: SyncIMAPClient | None = None,
-  ) -> dict[str, Any]:
+  ) -> dict[str, str | bool | None]:
     """Send an email message.
 
     Args:
@@ -151,7 +151,7 @@ class SyncSMTPClient:
     append_to_sent: bool = False,
     append_folder: str | None = None,
     imap_client: SyncIMAPClient | None = None,
-  ) -> dict[str, Any]:
+  ) -> dict[str, str | bool | None]:
     """Reply to an email message.
 
     Args:

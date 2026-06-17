@@ -29,6 +29,9 @@ from simple_email_gw.safety.sanitize import (
 
 _logger = logging.getLogger(__name__)
 
+# IMAP flags used when auto-appending a copy of a sent message
+APPEND_SENT_FLAGS = ["\\Seen"]
+
 # Email address validation pattern
 EMAIL_PATTERN = re.compile(r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$")
 
@@ -76,9 +79,9 @@ class SMTPClient:
     append_to_sent: bool,
     append_folder: str | None,
     imap_client: IMAPClient | None,
-  ) -> dict[str, Any]:
+  ) -> dict[str, str | bool | None]:
     """Optionally append a copy of a sent message to the Sent folder."""
-    append_result: dict[str, Any] = {
+    append_result: dict[str, str | bool | None] = {
       "appended": False,
       "append_folder": None,
       "append_warning": None,
@@ -125,7 +128,7 @@ class SMTPClient:
       await imap_client.append_message(
         folder=target_folder,
         message_bytes=message_bytes,
-        flags=["\\Seen"],
+        flags=APPEND_SENT_FLAGS,
       )
       append_result["appended"] = True
       append_result["append_folder"] = target_folder
@@ -168,7 +171,7 @@ class SMTPClient:
     append_to_sent: bool = False,
     append_folder: str | None = None,
     imap_client: IMAPClient | None = None,
-  ) -> dict[str, Any]:
+  ) -> dict[str, str | bool | None]:
     """Send an email message with optional HTML body and attachments.
 
     Validates all recipient addresses, checks whitelist restrictions,
@@ -294,7 +297,7 @@ class SMTPClient:
     append_to_sent: bool = False,
     append_folder: str | None = None,
     imap_client: IMAPClient | None = None,
-  ) -> dict[str, Any]:
+  ) -> dict[str, str | bool | None]:
     """Send a reply preserving thread context.
 
     Creates a reply message with proper In-Reply-To and References headers
