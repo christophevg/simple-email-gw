@@ -199,6 +199,52 @@ Optimized for black/dark terminal backgrounds:
 
 Switch between themes using the `theme` command to match your terminal background.
 
+## Composing and Replying
+
+### Compose a new email
+
+```
+work:INBOX> write alice@example.com
+```
+
+After entering the subject and body, the CLI shows a preview and asks for confirmation before sending.
+
+### Reply to an email
+
+```
+work:INBOX> reply <id>
+```
+
+The reply command loads the original email by ID, sets the recipient to the sender, and quotes the original body. You can then add your response and confirm the send.
+
+### Save a copy to the Sent folder
+
+By default, sent messages are not appended to the IMAP Sent folder. You can opt-in to saving a copy using the `--sent` flag (also `--save-sent`):
+
+```
+work:INBOX> write --sent alice@example.com
+work:INBOX> reply --sent 42
+```
+
+When `--sent` is used, the preview table shows `Save to Sent: Yes (auto-detected)` and the CLI asks:
+
+```
+Save a copy to Sent folder? (y/n):
+```
+
+If you confirm with `y` or `yes`, the CLI fetches the current IMAP session and passes it to the SMTP client so the message can be appended to Sent after a successful send.
+
+### Choose a custom Sent folder
+
+If your provider uses a non-standard Sent folder name, override it with `--sent-folder`:
+
+```
+work:INBOX> write --sent --sent-folder "Sent Items" alice@example.com
+work:INBOX> reply --sent --sent-folder "Sent Messages" 42
+```
+
+`--sent-folder` must always be paired with `--sent` (or `--save-sent`). Using it alone results in an error.
+
 ## Next Steps
 
 After connecting to an account, you can:
@@ -208,6 +254,7 @@ After connecting to an account, you can:
 - View emails with `show <id>`
 - Compose new emails with `write <recipient>`
 - Reply to emails with `reply <id>`
+- Save copies to your Sent folder with `write --sent` or `reply --sent`
 
 See the command reference in the help menu for all available commands.
 

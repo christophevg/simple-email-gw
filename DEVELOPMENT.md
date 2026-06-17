@@ -50,6 +50,15 @@ wrappers, connection pooling, and a FastMCP server.
   `get_append_max_size()` default/invalid fallback, and audit-log truncation
   boundaries.
 
+- Added CLI support for auto-append-to-Sent on `write` and `reply` commands:
+  - `--sent` / `--save-sent` opt-in flag (default `False`).
+  - `--sent-folder FOLDER` override (must be paired with `--sent`).
+  - Interactive `Save a copy to Sent folder? (y/n)` prompt during the compose flow.
+  - `reply` now uses `SMTPClient.reply_email()` and passes the session IMAP
+    client and `append_folder` to the SMTP client.
+  - `EmailDraft` carries `append_to_sent` and `append_folder`; the preview table
+    shows the Sent save choice.
+
 ## Development Commands
 
 ```bash
