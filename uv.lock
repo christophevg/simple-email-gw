@@ -2189,7 +2189,7 @@ wheels = [
 
 [[package]]
 name = "simple-email-gw"
-version = "0.2.1"
+version = "0.3.0"
 source = { editable = "." }
 dependencies = [
     { name = "aioimaplib" },
