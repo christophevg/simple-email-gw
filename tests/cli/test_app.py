@@ -2255,6 +2255,39 @@ class TestWriteSentFlag:
               mock_success.assert_called_once()
 
   @pytest.mark.asyncio
+  async def test_write_sent_flag_imap_unavailable_still_sends(self, mock_account):
+    """
+    Given: User runs 'write --sent' but the session IMAP client cannot be obtained
+    When: Email is sent
+    Then: A warning is shown, send_email is called with append_to_sent=False,
+      and the success panel is still displayed
+    """
+    cli = EmailCLI()
+    cli.session.set_account(mock_account)
+    with patch("simple_email_gw.cli.app.get_recipient_whitelist") as mock_wl:
+      mock_wl.return_value.is_allowed.return_value = True
+      mock_wl.return_value.filter_recipients.return_value = (["alice@example.com"], [])
+      cli.prompt_session.prompt_async = AsyncMock(
+        side_effect=["Subject", "", "", "Body", EOFError(), "y", "y"]
+      )
+      with patch.object(cli.session, "get_imap_client", new_callable=AsyncMock) as mock_imap:
+        mock_imap.side_effect = ConnectionError("IMAP not configured")
+        with patch.object(cli.session, "get_smtp_client", new_callable=AsyncMock) as mock_smtp:
+          mock_client = AsyncMock()
+          mock_client.send_email = AsyncMock(return_value={"status": "sent"})
+          mock_smtp.return_value = mock_client
+          with patch("simple_email_gw.cli.app.display_warning") as mock_warn:
+            with patch("simple_email_gw.cli.app.display_success") as mock_success:
+              await cli._cmd_write(["--sent", "alice@example.com"])
+              mock_client.send_email.assert_called_once()
+              kwargs = mock_client.send_email.call_args.kwargs
+              assert kwargs["append_to_sent"] is False
+              assert kwargs["append_folder"] is None
+              assert kwargs["imap_client"] is None
+              mock_warn.assert_called()
+              mock_success.assert_called_once()
+
+  @pytest.mark.asyncio
   async def test_write_sent_folder_without_flag_shows_error(self, mock_account):
     """
     Given: User runs 'write --sent-folder Sent alice@example.com'
@@ -2425,6 +2458,47 @@ class TestReplySentFlag:
           with patch("simple_email_gw.cli.app.display_warning") as mock_warn:
             with patch("simple_email_gw.cli.app.display_success") as mock_success:
               await cli._cmd_reply(["--sent", "123"])
+              mock_warn.assert_called()
+              mock_success.assert_called_once()
+
+  @pytest.mark.asyncio
+  async def test_reply_sent_flag_imap_unavailable_still_sends(self, mock_account):
+    """
+    Given: User runs 'reply --sent' but the session IMAP client cannot be obtained
+    When: Reply is sent
+    Then: A warning is shown, reply_email is called with append_to_sent=False,
+      and the success panel is still displayed
+    """
+    cli = EmailCLI()
+    cli.session.set_account(mock_account)
+    cli.session.set_folder("INBOX")
+    original = {
+      "id": "123",
+      "from": "original@example.com",
+      "subject": "Hello",
+      "body": "Original text",
+      "message_id": "<msg123@example.com>",
+      "references": [],
+    }
+    cli.session.cache_email("123", original)
+    with patch("simple_email_gw.cli.app.get_recipient_whitelist") as mock_wl:
+      mock_wl.return_value.is_allowed.return_value = True
+      mock_wl.return_value.filter_recipients.return_value = (["original@example.com"], [])
+      cli.prompt_session.prompt_async = AsyncMock(side_effect=["", EOFError(), "y", "y"])
+      with patch.object(cli.session, "get_imap_client", new_callable=AsyncMock) as mock_imap:
+        mock_imap.side_effect = ConnectionError("IMAP not configured")
+        with patch.object(cli.session, "get_smtp_client", new_callable=AsyncMock) as mock_smtp:
+          mock_client = AsyncMock()
+          mock_client.reply_email = AsyncMock(return_value={"status": "sent"})
+          mock_smtp.return_value = mock_client
+          with patch("simple_email_gw.cli.app.display_warning") as mock_warn:
+            with patch("simple_email_gw.cli.app.display_success") as mock_success:
+              await cli._cmd_reply(["--sent", "123"])
+              mock_client.reply_email.assert_called_once()
+              kwargs = mock_client.reply_email.call_args.kwargs
+              assert kwargs["append_to_sent"] is False
+              assert kwargs["append_folder"] is None
+              assert kwargs["imap_client"] is None
               mock_warn.assert_called()
               mock_success.assert_called_once()
 
