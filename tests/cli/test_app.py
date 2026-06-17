@@ -1799,9 +1799,9 @@ class TestReplyCommand:
         with patch.object(cli.session, "get_imap_client", new_callable=AsyncMock) as mock_imap:
           await cli._cmd_reply(["123"])
           mock_imap.assert_not_called()
-          mock_client.send_email.assert_called_once()
-          kwargs = mock_client.send_email.call_args.kwargs
-          assert kwargs["to"] == ["original@example.com"]
+          mock_client.reply_email.assert_called_once()
+          kwargs = mock_client.reply_email.call_args.kwargs
+          assert kwargs["to"] == "original@example.com"
 
   @pytest.mark.asyncio
   async def test_reply_command_fetches_original_from_imap(self, mock_account):
@@ -1882,9 +1882,9 @@ class TestReplyCommand:
         mock_client = AsyncMock()
         mock_smtp.return_value = mock_client
         await cli._cmd_reply(["123"])
-        mock_client.send_email.assert_called_once()
-        kwargs = mock_client.send_email.call_args.kwargs
-        assert kwargs["to"] == ["original@example.com"]
+        mock_client.reply_email.assert_called_once()
+        kwargs = mock_client.reply_email.call_args.kwargs
+        assert kwargs["to"] == "original@example.com"
 
   @pytest.mark.asyncio
   async def test_reply_command_prepopulates_subject_with_re(self, mock_account):
@@ -1913,8 +1913,8 @@ class TestReplyCommand:
         mock_client = AsyncMock()
         mock_smtp.return_value = mock_client
         await cli._cmd_reply(["123"])
-        mock_client.send_email.assert_called_once()
-        kwargs = mock_client.send_email.call_args.kwargs
+        mock_client.reply_email.assert_called_once()
+        kwargs = mock_client.reply_email.call_args.kwargs
         assert kwargs["subject"] == "Re: Hello"
 
   @pytest.mark.asyncio
@@ -1944,8 +1944,8 @@ class TestReplyCommand:
         mock_client = AsyncMock()
         mock_smtp.return_value = mock_client
         await cli._cmd_reply(["123"])
-        mock_client.send_email.assert_called_once()
-        kwargs = mock_client.send_email.call_args.kwargs
+        mock_client.reply_email.assert_called_once()
+        kwargs = mock_client.reply_email.call_args.kwargs
         assert kwargs["subject"] == "Re: Hello"
 
   @pytest.mark.asyncio
@@ -1975,8 +1975,8 @@ class TestReplyCommand:
         mock_client = AsyncMock()
         mock_smtp.return_value = mock_client
         await cli._cmd_reply(["123"])
-        mock_client.send_email.assert_called_once()
-        kwargs = mock_client.send_email.call_args.kwargs
+        mock_client.reply_email.assert_called_once()
+        kwargs = mock_client.reply_email.call_args.kwargs
         assert "> Original text" in kwargs["body"]
 
   @pytest.mark.asyncio
@@ -2006,8 +2006,8 @@ class TestReplyCommand:
         mock_client = AsyncMock()
         mock_smtp.return_value = mock_client
         await cli._cmd_reply(["123"])
-        mock_client.send_email.assert_called_once()
-        kwargs = mock_client.send_email.call_args.kwargs
+        mock_client.reply_email.assert_called_once()
+        kwargs = mock_client.reply_email.call_args.kwargs
         assert kwargs["in_reply_to"] == "<msg123@example.com>"
         assert "<msg123@example.com>" in kwargs["references"]
 
@@ -2099,9 +2099,9 @@ class TestReplyCommand:
         mock_client = AsyncMock()
         mock_smtp.return_value = mock_client
         await cli._cmd_reply(["123"])
-        mock_client.send_email.assert_called_once()
-        kwargs = mock_client.send_email.call_args.kwargs
-        assert kwargs["to"] == ["john@example.com"]
+        mock_client.reply_email.assert_called_once()
+        kwargs = mock_client.reply_email.call_args.kwargs
+        assert kwargs["to"] == "john@example.com"
 
   @pytest.mark.asyncio
   async def test_reply_command_edit_preserves_user_text(self, mock_account):
@@ -2133,11 +2133,300 @@ class TestReplyCommand:
         mock_client = AsyncMock()
         mock_smtp.return_value = mock_client
         await cli._cmd_reply(["123"])
-        mock_client.send_email.assert_called_once()
-        kwargs = mock_client.send_email.call_args.kwargs
+        mock_client.reply_email.assert_called_once()
+        kwargs = mock_client.reply_email.call_args.kwargs
         assert "First part" in kwargs["body"]
         assert "Second part" in kwargs["body"]
         assert "> Original text" in kwargs["body"]
+
+
+class TestWriteSentFlag:
+  """Tests for the write command --sent / --sent-folder options."""
+
+  @pytest.mark.asyncio
+  async def test_write_sent_flag_prompts_and_saves(self, mock_account):
+    """
+    Given: User runs 'write --sent alice@example.com' and confirms
+    When: Email is sent
+    Then: send_email is called with append_to_sent=True and the session IMAP client
+    """
+    cli = EmailCLI()
+    cli.session.set_account(mock_account)
+    with patch("simple_email_gw.cli.app.get_recipient_whitelist") as mock_wl:
+      mock_wl.return_value.is_allowed.return_value = True
+      mock_wl.return_value.filter_recipients.return_value = (["alice@example.com"], [])
+      cli.prompt_session.prompt_async = AsyncMock(
+        side_effect=["Subject", "", "", "Body", EOFError(), "y", "y"]
+      )
+      with patch.object(cli.session, "get_imap_client", new_callable=AsyncMock) as mock_imap:
+        mock_imap_client = AsyncMock()
+        mock_imap.return_value = mock_imap_client
+        with patch.object(cli.session, "get_smtp_client", new_callable=AsyncMock) as mock_smtp:
+          mock_client = AsyncMock()
+          mock_client.send_email = AsyncMock(return_value={"status": "sent"})
+          mock_smtp.return_value = mock_client
+          await cli._cmd_write(["--sent", "alice@example.com"])
+          mock_client.send_email.assert_called_once()
+          kwargs = mock_client.send_email.call_args.kwargs
+          assert kwargs["append_to_sent"] is True
+          assert kwargs["append_folder"] is None
+          assert kwargs["imap_client"] is mock_imap_client
+
+  @pytest.mark.asyncio
+  async def test_write_sent_flag_prompt_declined_does_not_append(self, mock_account):
+    """
+    Given: User runs 'write --sent alice@example.com' but declines the Sent prompt
+    When: Email is sent
+    Then: send_email is called with append_to_sent=False and no IMAP client is fetched
+    """
+    cli = EmailCLI()
+    cli.session.set_account(mock_account)
+    with patch("simple_email_gw.cli.app.get_recipient_whitelist") as mock_wl:
+      mock_wl.return_value.is_allowed.return_value = True
+      mock_wl.return_value.filter_recipients.return_value = (["alice@example.com"], [])
+      cli.prompt_session.prompt_async = AsyncMock(
+        side_effect=["Subject", "", "", "Body", EOFError(), "y", "n"]
+      )
+      with patch.object(cli.session, "get_imap_client", new_callable=AsyncMock) as mock_imap:
+        with patch.object(cli.session, "get_smtp_client", new_callable=AsyncMock) as mock_smtp:
+          mock_client = AsyncMock()
+          mock_client.send_email = AsyncMock(return_value={"status": "sent"})
+          mock_smtp.return_value = mock_client
+          await cli._cmd_write(["--sent", "alice@example.com"])
+          mock_imap.assert_not_called()
+          kwargs = mock_client.send_email.call_args.kwargs
+          assert kwargs["append_to_sent"] is False
+
+  @pytest.mark.asyncio
+  async def test_write_sent_folder_override_passed(self, mock_account):
+    """
+    Given: User runs 'write --sent --sent-folder "Sent Items"'
+    When: Email is sent
+    Then: send_email receives the custom append_folder
+    """
+    cli = EmailCLI()
+    cli.session.set_account(mock_account)
+    with patch("simple_email_gw.cli.app.get_recipient_whitelist") as mock_wl:
+      mock_wl.return_value.is_allowed.return_value = True
+      mock_wl.return_value.filter_recipients.return_value = (["alice@example.com"], [])
+      cli.prompt_session.prompt_async = AsyncMock(
+        side_effect=["Subject", "", "", "Body", EOFError(), "y", "y"]
+      )
+      with patch.object(cli.session, "get_imap_client", new_callable=AsyncMock) as mock_imap:
+        mock_imap_client = AsyncMock()
+        mock_imap.return_value = mock_imap_client
+        with patch.object(cli.session, "get_smtp_client", new_callable=AsyncMock) as mock_smtp:
+          mock_client = AsyncMock()
+          mock_client.send_email = AsyncMock(return_value={"status": "sent"})
+          mock_smtp.return_value = mock_client
+          await cli._cmd_write(["--sent", "--sent-folder", "Sent Items", "alice@example.com"])
+          kwargs = mock_client.send_email.call_args.kwargs
+          assert kwargs["append_folder"] == "Sent Items"
+          assert kwargs["append_to_sent"] is True
+
+  @pytest.mark.asyncio
+  async def test_write_sent_flag_append_failure_shows_warning(self, mock_account):
+    """
+    Given: User confirms saving to Sent
+    When: Auto-append fails but SMTP send succeeds
+    Then: A warning is shown and the success panel is still displayed
+    """
+    cli = EmailCLI()
+    cli.session.set_account(mock_account)
+    with patch("simple_email_gw.cli.app.get_recipient_whitelist") as mock_wl:
+      mock_wl.return_value.is_allowed.return_value = True
+      mock_wl.return_value.filter_recipients.return_value = (["alice@example.com"], [])
+      cli.prompt_session.prompt_async = AsyncMock(
+        side_effect=["Subject", "", "", "Body", EOFError(), "y", "y"]
+      )
+      with patch.object(cli.session, "get_imap_client", new_callable=AsyncMock) as mock_imap:
+        mock_imap_client = AsyncMock()
+        mock_imap.return_value = mock_imap_client
+        with patch.object(cli.session, "get_smtp_client", new_callable=AsyncMock) as mock_smtp:
+          mock_client = AsyncMock()
+          mock_client.send_email = AsyncMock(
+            return_value={"status": "sent", "append_warning": "Could not save copy to Sent folder"}
+          )
+          mock_smtp.return_value = mock_client
+          with patch("simple_email_gw.cli.app.display_warning") as mock_warn:
+            with patch("simple_email_gw.cli.app.display_success") as mock_success:
+              await cli._cmd_write(["--sent", "alice@example.com"])
+              mock_warn.assert_called()
+              mock_success.assert_called_once()
+
+  @pytest.mark.asyncio
+  async def test_write_sent_folder_without_flag_shows_error(self, mock_account):
+    """
+    Given: User runs 'write --sent-folder Sent alice@example.com'
+    When: Command is parsed
+    Then: An error is displayed because --sent-folder requires --sent
+    """
+    cli = EmailCLI()
+    cli.session.set_account(mock_account)
+    with patch("simple_email_gw.cli.app.display_error") as mock_error:
+      await cli._cmd_write(["--sent-folder", "Sent", "alice@example.com"])
+      mock_error.assert_called_once()
+      assert "requires --sent" in mock_error.call_args[0][1]
+
+  @pytest.mark.asyncio
+  async def test_write_sent_folder_missing_value_shows_error(self, mock_account):
+    """
+    Given: User runs 'write --sent --sent-folder'
+    When: Command is parsed
+    Then: An error is displayed because --sent-folder requires a value
+    """
+    cli = EmailCLI()
+    cli.session.set_account(mock_account)
+    with patch("simple_email_gw.cli.app.display_error") as mock_error:
+      await cli._cmd_write(["--sent", "--sent-folder"])
+      mock_error.assert_called_once()
+      assert "requires a folder name" in mock_error.call_args[0][1]
+
+
+class TestReplySentFlag:
+  """Tests for the reply command --sent / --sent-folder options."""
+
+  @pytest.mark.asyncio
+  async def test_reply_sent_flag_prompts_and_saves(self, mock_account):
+    """
+    Given: User runs 'reply --sent 123' and confirms
+    When: Reply is sent
+    Then: reply_email is called with append_to_sent=True and the session IMAP client
+    """
+    cli = EmailCLI()
+    cli.session.set_account(mock_account)
+    cli.session.set_folder("INBOX")
+    original = {
+      "id": "123",
+      "from": "original@example.com",
+      "subject": "Hello",
+      "body": "Original text",
+      "message_id": "<msg123@example.com>",
+      "references": [],
+    }
+    cli.session.cache_email("123", original)
+    with patch("simple_email_gw.cli.app.get_recipient_whitelist") as mock_wl:
+      mock_wl.return_value.is_allowed.return_value = True
+      mock_wl.return_value.filter_recipients.return_value = (["original@example.com"], [])
+      cli.prompt_session.prompt_async = AsyncMock(side_effect=["", EOFError(), "y", "y"])
+      with patch.object(cli.session, "get_imap_client", new_callable=AsyncMock) as mock_imap:
+        mock_imap_client = AsyncMock()
+        mock_imap.return_value = mock_imap_client
+        with patch.object(cli.session, "get_smtp_client", new_callable=AsyncMock) as mock_smtp:
+          mock_client = AsyncMock()
+          mock_client.reply_email = AsyncMock(return_value={"status": "sent"})
+          mock_smtp.return_value = mock_client
+          await cli._cmd_reply(["--sent", "123"])
+          kwargs = mock_client.reply_email.call_args.kwargs
+          assert kwargs["append_to_sent"] is True
+          assert kwargs["append_folder"] is None
+          assert kwargs["imap_client"] is mock_imap_client
+
+  @pytest.mark.asyncio
+  async def test_reply_sent_flag_prompt_declined_does_not_append(self, mock_account):
+    """
+    Given: User runs 'reply --sent 123' but declines the Sent prompt
+    When: Reply is sent
+    Then: reply_email is called with append_to_sent=False and no IMAP client is fetched
+    """
+    cli = EmailCLI()
+    cli.session.set_account(mock_account)
+    cli.session.set_folder("INBOX")
+    original = {
+      "id": "123",
+      "from": "original@example.com",
+      "subject": "Hello",
+      "body": "Original text",
+      "message_id": "<msg123@example.com>",
+      "references": [],
+    }
+    cli.session.cache_email("123", original)
+    with patch("simple_email_gw.cli.app.get_recipient_whitelist") as mock_wl:
+      mock_wl.return_value.is_allowed.return_value = True
+      mock_wl.return_value.filter_recipients.return_value = (["original@example.com"], [])
+      cli.prompt_session.prompt_async = AsyncMock(side_effect=["", EOFError(), "y", "n"])
+      with patch.object(cli.session, "get_imap_client", new_callable=AsyncMock) as mock_imap:
+        with patch.object(cli.session, "get_smtp_client", new_callable=AsyncMock) as mock_smtp:
+          mock_client = AsyncMock()
+          mock_client.reply_email = AsyncMock(return_value={"status": "sent"})
+          mock_smtp.return_value = mock_client
+          await cli._cmd_reply(["--sent", "123"])
+          mock_imap.assert_not_called()
+          kwargs = mock_client.reply_email.call_args.kwargs
+          assert kwargs["append_to_sent"] is False
+
+  @pytest.mark.asyncio
+  async def test_reply_sent_folder_override_passed(self, mock_account):
+    """
+    Given: User runs 'reply --sent --sent-folder Sent 123'
+    When: Reply is sent
+    Then: reply_email receives the custom append_folder
+    """
+    cli = EmailCLI()
+    cli.session.set_account(mock_account)
+    cli.session.set_folder("INBOX")
+    original = {
+      "id": "123",
+      "from": "original@example.com",
+      "subject": "Hello",
+      "body": "Original text",
+      "message_id": "<msg123@example.com>",
+      "references": [],
+    }
+    cli.session.cache_email("123", original)
+    with patch("simple_email_gw.cli.app.get_recipient_whitelist") as mock_wl:
+      mock_wl.return_value.is_allowed.return_value = True
+      mock_wl.return_value.filter_recipients.return_value = (["original@example.com"], [])
+      cli.prompt_session.prompt_async = AsyncMock(side_effect=["", EOFError(), "y", "y"])
+      with patch.object(cli.session, "get_imap_client", new_callable=AsyncMock) as mock_imap:
+        mock_imap_client = AsyncMock()
+        mock_imap.return_value = mock_imap_client
+        with patch.object(cli.session, "get_smtp_client", new_callable=AsyncMock) as mock_smtp:
+          mock_client = AsyncMock()
+          mock_client.reply_email = AsyncMock(return_value={"status": "sent"})
+          mock_smtp.return_value = mock_client
+          await cli._cmd_reply(["--sent", "--sent-folder", "Sent", "123"])
+          kwargs = mock_client.reply_email.call_args.kwargs
+          assert kwargs["append_folder"] == "Sent"
+          assert kwargs["append_to_sent"] is True
+
+  @pytest.mark.asyncio
+  async def test_reply_sent_flag_append_failure_shows_warning(self, mock_account):
+    """
+    Given: User confirms saving to Sent on a reply
+    When: Auto-append fails but SMTP send succeeds
+    Then: A warning is shown and the success panel is still displayed
+    """
+    cli = EmailCLI()
+    cli.session.set_account(mock_account)
+    cli.session.set_folder("INBOX")
+    original = {
+      "id": "123",
+      "from": "original@example.com",
+      "subject": "Hello",
+      "body": "Original text",
+      "message_id": "<msg123@example.com>",
+      "references": [],
+    }
+    cli.session.cache_email("123", original)
+    with patch("simple_email_gw.cli.app.get_recipient_whitelist") as mock_wl:
+      mock_wl.return_value.is_allowed.return_value = True
+      mock_wl.return_value.filter_recipients.return_value = (["original@example.com"], [])
+      cli.prompt_session.prompt_async = AsyncMock(side_effect=["", EOFError(), "y", "y"])
+      with patch.object(cli.session, "get_imap_client", new_callable=AsyncMock) as mock_imap:
+        mock_imap_client = AsyncMock()
+        mock_imap.return_value = mock_imap_client
+        with patch.object(cli.session, "get_smtp_client", new_callable=AsyncMock) as mock_smtp:
+          mock_client = AsyncMock()
+          mock_client.reply_email = AsyncMock(
+            return_value={"status": "sent", "append_warning": "Could not save copy to Sent folder"}
+          )
+          mock_smtp.return_value = mock_client
+          with patch("simple_email_gw.cli.app.display_warning") as mock_warn:
+            with patch("simple_email_gw.cli.app.display_success") as mock_success:
+              await cli._cmd_reply(["--sent", "123"])
+              mock_warn.assert_called()
+              mock_success.assert_called_once()
 
 
 class TestWriteCommandMultipleRecipients:
