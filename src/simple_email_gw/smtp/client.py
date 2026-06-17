@@ -129,6 +129,15 @@ class SMTPClient:
       )
       append_result["appended"] = True
       append_result["append_folder"] = target_folder
+      log_email_appended(
+        account=self.account.name,
+        folder=target_folder,
+        success=True,
+        message_id=message_id,
+        subject_prefix=safe_subject,
+        message_size=message_size,
+        auto_append=True,
+      )
     except Exception as e:
       _logger.warning("Auto-append to Sent folder failed: %s", e)
       append_result["append_warning"] = "Could not save copy to Sent folder"

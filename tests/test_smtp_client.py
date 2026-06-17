@@ -83,7 +83,7 @@ class TestSendEmailAutoAppend:
 
   @pytest.mark.asyncio
   async def test_send_email_auto_append_success(self, account):
-    """When append succeeds, result reports appended True and folder."""
+    """When append succeeds, result reports appended True and folder, and audit log records auto_append."""
     client = SMTPClient(account)
     imap_client = AsyncMock()
     imap_client.find_sent_folder = AsyncMock(return_value="Sent")
@@ -95,13 +95,14 @@ class TestSendEmailAutoAppend:
         "recipients": "recipient@example.com",
         "message": "OK",
       }
-      result = await client.send_email(
-        to=["recipient@example.com"],
-        subject="Test",
-        body="Hello",
-        append_to_sent=True,
-        imap_client=imap_client,
-      )
+      with patch("simple_email_gw.smtp.client.log_email_appended") as mock_log:
+        result = await client.send_email(
+          to=["recipient@example.com"],
+          subject="Test",
+          body="Hello",
+          append_to_sent=True,
+          imap_client=imap_client,
+        )
 
     assert result["status"] == "sent"
     assert result["appended"] is True
@@ -112,6 +113,13 @@ class TestSendEmailAutoAppend:
     append_call = imap_client.append_message.call_args
     assert append_call.kwargs["folder"] == "Sent"
     assert append_call.kwargs["flags"] == ["\\Seen"]
+    mock_log.assert_called_once()
+    assert mock_log.call_args.kwargs["success"] is True
+    assert mock_log.call_args.kwargs["auto_append"] is True
+    assert mock_log.call_args.kwargs["account"] == account.name
+    assert mock_log.call_args.kwargs["folder"] == "Sent"
+    assert mock_log.call_args.kwargs["message_id"]
+    assert mock_log.call_args.kwargs["message_size"] > 0
 
   @pytest.mark.asyncio
   async def test_send_email_auto_append_failure_is_warning(self, account):
