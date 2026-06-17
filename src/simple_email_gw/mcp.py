@@ -283,6 +283,14 @@ async def send_email(
   if ctx:
     await ctx.info(f"Sending email to {len(to)} recipient(s) from account: {account}")
 
+  # Validate optional append_folder override at the MCP layer
+  safe_append_folder: str | None = None
+  if append_folder is not None:
+    try:
+      safe_append_folder = sanitize_folder_name(validate_folder_name(append_folder))
+    except ValueError as e:
+      raise ToolError(str(e)) from e
+
   try:
     pool = await get_pool()
     smtp_client = await pool.get_smtp_client(account)
@@ -296,7 +304,7 @@ async def send_email(
       html_body=html_body,
       attachments=attachments,
       append_to_sent=append_to_sent,
-      append_folder=append_folder,
+      append_folder=safe_append_folder,
       imap_client=imap_client,
     )
     return result
@@ -350,6 +358,14 @@ async def reply_email(
   if ctx:
     await ctx.info(f"Replying to message: {in_reply_to}")
 
+  # Validate optional append_folder override at the MCP layer
+  safe_append_folder: str | None = None
+  if append_folder is not None:
+    try:
+      safe_append_folder = sanitize_folder_name(validate_folder_name(append_folder))
+    except ValueError as e:
+      raise ToolError(str(e)) from e
+
   try:
     pool = await get_pool()
     smtp_client = await pool.get_smtp_client(account)
@@ -362,7 +378,7 @@ async def reply_email(
       references=references,
       html_body=html_body,
       append_to_sent=append_to_sent,
-      append_folder=append_folder,
+      append_folder=safe_append_folder,
       imap_client=imap_client,
     )
     return result
