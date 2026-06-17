@@ -249,6 +249,36 @@ class TestSendEmailAutoAppend:
     assert result["append_folder"] is None
     assert result["append_warning"] is None
 
+  @pytest.mark.asyncio
+  async def test_send_email_auto_append_warns_when_message_too_large(self, account):
+    """When IMAP append rejects due to size cap, auto-append logs failure and returns warning."""
+    client = SMTPClient(account)
+    imap_client = AsyncMock()
+    imap_client.find_sent_folder = AsyncMock(return_value="Sent")
+    imap_client.append_message = AsyncMock(side_effect=ValueError("Message exceeds maximum size"))
+
+    with patch.object(client, "_send", new_callable=AsyncMock) as mock_send:
+      mock_send.return_value = {
+        "status": "sent",
+        "recipients": "recipient@example.com",
+        "message": "OK",
+      }
+      with patch("simple_email_gw.smtp.client.log_email_appended") as mock_log:
+        result = await client.send_email(
+          to=["recipient@example.com"],
+          subject="Test",
+          body="Hello",
+          append_to_sent=True,
+          imap_client=imap_client,
+        )
+
+    assert result["status"] == "sent"
+    assert result["appended"] is False
+    assert result["append_warning"] == "Could not save copy to Sent folder"
+    mock_log.assert_called_once()
+    assert mock_log.call_args.kwargs["success"] is False
+    assert mock_log.call_args.kwargs["auto_append"] is True
+
 
 class TestReplyEmailAutoAppend:
   """Tests for auto-append in reply_email."""

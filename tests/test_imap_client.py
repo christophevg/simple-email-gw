@@ -447,6 +447,20 @@ class TestFindSentFolder:
 
     assert result is None
 
+  @pytest.mark.asyncio
+  async def test_find_sent_folder_picks_first_special_use_sent(self, account):
+    """When multiple folders advertise \\Sent, the first one is returned."""
+    client = IMAPClient(account)
+    with patch.object(client, "list_folders", new_callable=AsyncMock) as mock_list:
+      mock_list.return_value = [
+        {"name": "INBOX", "flags": []},
+        {"name": "Sent", "flags": ["\\Sent"]},
+        {"name": "Sent Items", "flags": ["\\Sent"]},
+      ]
+      result = await client.find_sent_folder()
+
+    assert result == "Sent"
+
 
 class TestAppendMessage:
   """Tests for IMAPClient.append_message method."""
@@ -579,6 +593,76 @@ class TestAppendMessage:
       mock_connect.return_value = mock_imap
       with pytest.raises(RuntimeError, match="Failed to append message"):
         await client.append_message("Sent", b"body")
+
+  @pytest.mark.asyncio
+  async def test_append_message_with_timezone_aware_internal_date(self, account):
+    """Timezone-aware internal_date is forwarded to the IMAP APPEND command."""
+    from datetime import datetime, timezone
+
+    client = IMAPClient(account)
+    mock_imap = AsyncMock()
+    mock_imap.append = AsyncMock(return_value=("OK", []))
+    internal_date = datetime.now(timezone.utc)
+
+    with patch.object(client, "connect", new_callable=AsyncMock) as mock_connect:
+      mock_connect.return_value = mock_imap
+      with patch("simple_email_gw.imap.client.log_email_appended"):
+        result = await client.append_message("Sent", b"body", internal_date=internal_date)
+
+    assert result == {"status": "appended", "folder": "Sent"}
+    append_call = mock_imap.append.call_args
+    assert append_call.kwargs["date"] == internal_date
+
+  @pytest.mark.asyncio
+  async def test_append_message_with_none_flags(self, account):
+    """None flags results in no flags being passed to IMAP APPEND."""
+    client = IMAPClient(account)
+    mock_imap = AsyncMock()
+    mock_imap.append = AsyncMock(return_value=("OK", []))
+
+    with patch.object(client, "connect", new_callable=AsyncMock) as mock_connect:
+      mock_connect.return_value = mock_imap
+      with patch("simple_email_gw.imap.client.log_email_appended"):
+        result = await client.append_message("Sent", b"body", flags=None)
+
+    assert result == {"status": "appended", "folder": "Sent"}
+    append_call = mock_imap.append.call_args
+    assert append_call.kwargs["flags"] is None
+
+  @pytest.mark.asyncio
+  async def test_append_message_logs_failure_on_exception(self, account):
+    """Exception during APPEND is audit-logged with success=False before re-raising."""
+    client = IMAPClient(account)
+    mock_imap = AsyncMock()
+    mock_imap.append = AsyncMock(side_effect=RuntimeError("network error"))
+
+    with patch.object(client, "connect", new_callable=AsyncMock) as mock_connect:
+      mock_connect.return_value = mock_imap
+      with patch("simple_email_gw.imap.client.log_email_appended") as mock_log:
+        with pytest.raises(RuntimeError, match="Failed to append message"):
+          await client.append_message("Sent", b"body")
+
+    mock_log.assert_called_once()
+    assert mock_log.call_args.kwargs["success"] is False
+    assert mock_log.call_args.kwargs["folder"] == "Sent"
+    assert mock_log.call_args.kwargs["message_size"] == 4
+
+  @pytest.mark.asyncio
+  async def test_append_message_logs_failure_on_no_response(self, account):
+    """NO response during APPEND is audit-logged with success=False before re-raising."""
+    client = IMAPClient(account)
+    mock_imap = AsyncMock()
+    mock_imap.append = AsyncMock(return_value=("NO", [b"[OVERQUOTA] Mailbox full"]))
+
+    with patch.object(client, "connect", new_callable=AsyncMock) as mock_connect:
+      mock_connect.return_value = mock_imap
+      with patch("simple_email_gw.imap.client.log_email_appended") as mock_log:
+        with pytest.raises(RuntimeError, match="Mailbox quota exceeded"):
+          await client.append_message("Sent", b"body")
+
+    mock_log.assert_called_once()
+    assert mock_log.call_args.kwargs["success"] is False
+    assert mock_log.call_args.kwargs["folder"] == "Sent"
 
   @pytest.mark.asyncio
   async def test_append_message_uses_operation_lock(self, account):

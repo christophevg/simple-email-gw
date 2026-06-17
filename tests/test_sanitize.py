@@ -3,6 +3,8 @@
 import pytest
 
 from simple_email_gw.safety.sanitize import (
+  APPEND_MAX_SIZE_DEFAULT,
+  get_append_max_size,
   sanitize_filename,
   sanitize_folder_name,
   sanitize_header_value,
@@ -357,3 +359,22 @@ class TestValidateAppendFlags:
     """Test a mix of valid and invalid flags is rejected."""
     with pytest.raises(ValueError, match="Invalid IMAP flag"):
       validate_append_flags(["\\Seen", "\\Evil"])
+
+
+class TestGetAppendMaxSize:
+  """Tests for get_append_max_size helper."""
+
+  def test_default_size(self, monkeypatch):
+    """Default maximum size is 25 MB when no env override is set."""
+    monkeypatch.delenv("EMAIL_APPEND_MAX_SIZE", raising=False)
+    assert get_append_max_size() == APPEND_MAX_SIZE_DEFAULT
+
+  def test_valid_env_override(self, monkeypatch):
+    """Valid integer env value overrides the default."""
+    monkeypatch.setenv("EMAIL_APPEND_MAX_SIZE", "1000")
+    assert get_append_max_size() == 1000
+
+  def test_invalid_env_fallback_to_default(self, monkeypatch):
+    """Non-integer env value falls back to the default size."""
+    monkeypatch.setenv("EMAIL_APPEND_MAX_SIZE", "not-a-number")
+    assert get_append_max_size() == APPEND_MAX_SIZE_DEFAULT

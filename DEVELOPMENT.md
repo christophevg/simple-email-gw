@@ -30,6 +30,26 @@ wrappers, connection pooling, and a FastMCP server.
 - Fixed `SMTPClient._auto_append()` to log successful auto-appends with
   `auto_append=True` (was only logging failure paths).
 
+## Review Feedback Fixes (P1-001)
+
+- Aligned `__version__` in `src/simple_email_gw/__init__.py` with `pyproject.toml`
+  (`0.2.1`).
+- Refactored `IMAPClient.append_message()` to use the `_APPEND_ERROR_MESSAGES`
+  mapping instead of duplicated inline error strings.
+- Added failure audit logging (`log_email_appended(..., success=False, ...)`)
+  in all `IMAPClient.append_message()` error branches before re-raising.
+- Validated `append_folder` at the MCP layer in `send_email` and `reply_email`
+  tools before forwarding to the SMTP client.
+- Tightened return type annotations for `SMTPClient.send_email()` and
+  `reply_email()` (and their sync wrappers) to `dict[str, str | bool | None]`.
+- Extracted module-level constants: `SENT_FOLDER_FALLBACKS` in `imap/client.py`
+  and `APPEND_SENT_FLAGS` in `smtp/client.py`.
+- Added tests for: timezone-aware `internal_date`, `flags=None`, direct
+  append failure audit logging, first `\Sent` selection, auto-append size-cap
+  warning, CRLF injection in address headers for `append_email`,
+  `get_append_max_size()` default/invalid fallback, and audit-log truncation
+  boundaries.
+
 ## Development Commands
 
 ```bash

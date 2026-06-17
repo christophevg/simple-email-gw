@@ -69,3 +69,31 @@ class TestLogEmailAppended:
       details = mock_log.call_args.kwargs["details"]
       assert len(details["message_id"]) == 50
       assert len(details["subject_prefix"]) == 50
+
+  def test_log_email_appended_boundary_50_not_truncated(self):
+    """Exactly 50 characters are preserved."""
+    with patch("simple_email_gw.safety.audit.log_event") as mock_log:
+      log_email_appended(
+        account="test",
+        folder="Sent",
+        message_id="x" * 50,
+        subject_prefix="y" * 50,
+      )
+
+      details = mock_log.call_args.kwargs["details"]
+      assert details["message_id"] == "x" * 50
+      assert details["subject_prefix"] == "y" * 50
+
+  def test_log_email_appended_boundary_51_truncated(self):
+    """51 characters are truncated to 50."""
+    with patch("simple_email_gw.safety.audit.log_event") as mock_log:
+      log_email_appended(
+        account="test",
+        folder="Sent",
+        message_id="x" * 51,
+        subject_prefix="y" * 51,
+      )
+
+      details = mock_log.call_args.kwargs["details"]
+      assert len(details["message_id"]) == 50
+      assert len(details["subject_prefix"]) == 50

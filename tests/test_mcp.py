@@ -332,6 +332,21 @@ class TestAppendEmailTool:
     )
     return base64.b64encode(msg).decode("ascii")
 
+  def _make_raw_message_with_header(self, header_name: str, header_value: str) -> str:
+    """Return a base64-encoded RFC822 message with a folded address header.
+
+    The continuation whitespace keeps the injected CRLF inside the parsed
+    header value, which the tool must reject.
+    """
+    msg = (
+      f"{header_name}: {header_value}\r\n"
+      "Subject: Test\r\n"
+      "Message-ID: <msg123@example.com>\r\n"
+      "\r\n"
+      "Body"
+    )
+    return base64.b64encode(msg.encode("utf-8")).decode("ascii")
+
   @pytest.mark.asyncio
   async def test_append_email_tool_success(self, mock_ctx):
     """
@@ -458,6 +473,50 @@ class TestAppendEmailTool:
     with pytest.raises(ToolError, match="Invalid message content"):
       await append_email(account="test", folder="Sent", raw_message=raw, ctx=mock_ctx)
 
+  @pytest.mark.asyncio
+  async def test_append_email_tool_rejects_crlf_in_from(self, mock_ctx):
+    """CRLF injection in the From header is rejected."""
+    if append_email is None:
+      pytest.fail("Not implemented: append_email tool")
+
+    raw = self._make_raw_message_with_header(
+      "From", "sender@example.com\r\n Bcc: attacker@evil.com"
+    )
+    with pytest.raises(ToolError, match="Invalid message content"):
+      await append_email(account="test", folder="Sent", raw_message=raw, ctx=mock_ctx)
+
+  @pytest.mark.asyncio
+  async def test_append_email_tool_rejects_crlf_in_to(self, mock_ctx):
+    """CRLF injection in the To header is rejected."""
+    if append_email is None:
+      pytest.fail("Not implemented: append_email tool")
+
+    raw = self._make_raw_message_with_header(
+      "To", "recipient@example.com\r\n Bcc: attacker@evil.com"
+    )
+    with pytest.raises(ToolError, match="Invalid message content"):
+      await append_email(account="test", folder="Sent", raw_message=raw, ctx=mock_ctx)
+
+  @pytest.mark.asyncio
+  async def test_append_email_tool_rejects_crlf_in_cc(self, mock_ctx):
+    """CRLF injection in the Cc header is rejected."""
+    if append_email is None:
+      pytest.fail("Not implemented: append_email tool")
+
+    raw = self._make_raw_message_with_header("Cc", "cc@example.com\r\n Bcc: attacker@evil.com")
+    with pytest.raises(ToolError, match="Invalid message content"):
+      await append_email(account="test", folder="Sent", raw_message=raw, ctx=mock_ctx)
+
+  @pytest.mark.asyncio
+  async def test_append_email_tool_rejects_crlf_in_bcc(self, mock_ctx):
+    """CRLF injection in the Bcc header is rejected."""
+    if append_email is None:
+      pytest.fail("Not implemented: append_email tool")
+
+    raw = self._make_raw_message_with_header("Bcc", "bcc@example.com\r\n X-Injected: evil")
+    with pytest.raises(ToolError, match="Invalid message content"):
+      await append_email(account="test", folder="Sent", raw_message=raw, ctx=mock_ctx)
+
 
 class TestSendEmailTool:
   """Tests for updated send_email MCP tool."""
@@ -508,6 +567,27 @@ class TestSendEmailTool:
       assert call.kwargs["append_folder"] == "Sent"
       assert call.kwargs["imap_client"] is imap_client
 
+  @pytest.mark.asyncio
+  async def test_send_email_tool_rejects_invalid_append_folder(self, mock_ctx):
+    """
+    Given: append_folder containing CRLF injection
+    When: send_email tool is called
+    Then: Raises ToolError before contacting the SMTP client
+    """
+    if send_email is None:
+      pytest.fail("Not implemented: send_email tool")
+
+    with pytest.raises(ToolError, match="invalid characters"):
+      await send_email(
+        account="test",
+        to=["to@example.com"],
+        subject="Test",
+        body="Hello",
+        append_to_sent=True,
+        append_folder="Bad\r\nFolder",
+        ctx=mock_ctx,
+      )
+
 
 class TestReplyEmailTool:
   """Tests for updated reply_email MCP tool."""
@@ -556,3 +636,25 @@ class TestReplyEmailTool:
       call = smtp_client.reply_email.call_args
       assert call.kwargs["append_to_sent"] is True
       assert call.kwargs["imap_client"] is imap_client
+
+  @pytest.mark.asyncio
+  async def test_reply_email_tool_rejects_invalid_append_folder(self, mock_ctx):
+    """
+    Given: append_folder containing CRLF injection
+    When: reply_email tool is called
+    Then: Raises ToolError before contacting the SMTP client
+    """
+    if reply_email is None:
+      pytest.fail("Not implemented: reply_email tool")
+
+    with pytest.raises(ToolError, match="invalid characters"):
+      await reply_email(
+        account="test",
+        to="to@example.com",
+        subject="Re: Test",
+        body="Reply",
+        in_reply_to="<original@example.com>",
+        append_to_sent=True,
+        append_folder="Bad\r\nFolder",
+        ctx=mock_ctx,
+      )
