@@ -122,6 +122,48 @@ class TestSendEmailAutoAppend:
     assert mock_log.call_args.kwargs["message_size"] > 0
 
   @pytest.mark.asyncio
+  async def test_send_email_auto_append_quotes_sent_folder_with_spaces(self, account):
+    """When the Sent folder name contains spaces, the IMAP APPEND mailbox is quoted.
+
+    This mirrors the CLI ``write --sent`` flow: the auto-append path discovers
+    the real Sent folder name and must IMAP-quote it before calling aioimaplib,
+    otherwise the server rejects the command with a parse error.
+    """
+    from simple_email_gw.imap.client import IMAPClient
+
+    smtp_client = SMTPClient(account)
+    imap_client = IMAPClient(account)
+
+    mock_imap = AsyncMock()
+    mock_imap.append = AsyncMock(return_value=("OK", []))
+
+    with patch.object(smtp_client, "_send", new_callable=AsyncMock) as mock_send:
+      mock_send.return_value = {
+        "status": "sent",
+        "recipients": "recipient@example.com",
+        "message": "OK",
+      }
+      with patch.object(imap_client, "find_sent_folder", new_callable=AsyncMock) as mock_find:
+        mock_find.return_value = "Sent Items"
+        with patch.object(imap_client, "connect", new_callable=AsyncMock) as mock_connect:
+          mock_connect.return_value = mock_imap
+          with patch("simple_email_gw.imap.client.log_email_appended"):
+            result = await smtp_client.send_email(
+              to=["recipient@example.com"],
+              subject="Test",
+              body="Hello",
+              append_to_sent=True,
+              imap_client=imap_client,
+            )
+
+    assert result["status"] == "sent"
+    assert result["appended"] is True
+    assert result["append_folder"] == "Sent Items"
+    mock_imap.append.assert_awaited_once()
+    append_call = mock_imap.append.call_args
+    assert append_call.kwargs["mailbox"] == '"Sent Items"'
+
+  @pytest.mark.asyncio
   async def test_send_email_auto_append_failure_is_warning(self, account):
     """When append fails, send still succeeds and a warning is returned."""
     client = SMTPClient(account)

@@ -73,6 +73,27 @@ def _get_append_error_message(error_text: str) -> str | None:
   return None
 
 
+def _quote_mailbox_name(name: str) -> str:
+  """Return an IMAP quoted string for mailbox names that are not atoms.
+
+  RFC 3501 atoms cannot contain spaces, parentheses, braces, wildcards,
+  quote/backslash characters, or response specials. Quoting the mailbox name
+  ensures the APPEND command is parsed correctly by the server even for
+  folder names such as ``Sent Items``.
+
+  Args:
+    name: Mailbox name already validated for dangerous characters.
+
+  Returns:
+    The original name if it is a valid atom; otherwise a quoted string.
+  """
+  atom_specials = '(){ %*"\\]'
+  if any(ch in name for ch in atom_specials) or any(ord(ch) < 32 for ch in name):
+    escaped = name.replace("\\", "\\\\").replace('"', '\\"')
+    return f'"{escaped}"'
+  return name
+
+
 class SecurityError(Exception):
   """Raised when a security constraint is violated (e.g., symlink escape)."""
 
@@ -317,6 +338,7 @@ class IMAPClient:
         raise ValueError("internal_date must be timezone-aware")
 
     flag_str = f"({' '.join(safe_flags)})" if safe_flags else None
+    mailbox_arg = _quote_mailbox_name(safe_folder)
 
     # Extract audit-log metadata before the IMAP call so failures can be logged
     subject_prefix = ""
@@ -333,7 +355,7 @@ class IMAPClient:
       try:
         status, data = await client.append(
           message_bytes,
-          mailbox=safe_folder,
+          mailbox=mailbox_arg,
           flags=flag_str,
           date=internal_date,
         )
