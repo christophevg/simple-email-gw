@@ -49,6 +49,9 @@ _APPEND_ERROR_MESSAGES: dict[str, str] = {
   "[TRYCREATE]": "Folder does not exist",
 }
 
+# Fallback folder names when the server does not advertise the \Sent special-use flag
+SENT_FOLDER_FALLBACKS = ["Sent", "Sent Items", "Sent Messages"]
+
 
 def _decode_append_error(data: Any) -> str:
   """Extract a sanitized error text from an IMAP APPEND response."""
@@ -60,6 +63,14 @@ def _decode_append_error(data: Any) -> str:
   if isinstance(first, str):
     return first
   return ""
+
+
+def _get_append_error_message(error_text: str) -> str | None:
+  """Map an IMAP APPEND error text to a generic message if a known code is present."""
+  for code, message in _APPEND_ERROR_MESSAGES.items():
+    if code in error_text:
+      return message
+  return None
 
 
 class SecurityError(Exception):
@@ -259,9 +270,8 @@ class IMAPClient:
       if any(str(flag).upper() == r"\SENT" for flag in flags):
         return folder["name"]
 
-    candidates = ["Sent", "Sent Items", "Sent Messages"]
     names = {folder["name"] for folder in folders}
-    for candidate in candidates:
+    for candidate in SENT_FOLDER_FALLBACKS:
       if candidate in names:
         return candidate
     return None
@@ -308,6 +318,16 @@ class IMAPClient:
 
     flag_str = f"({' '.join(safe_flags)})" if safe_flags else None
 
+    # Extract audit-log metadata before the IMAP call so failures can be logged
+    subject_prefix = ""
+    message_id: str | None = None
+    try:
+      parsed = email.message_from_bytes(message_bytes)
+      subject_prefix = parsed.get("Subject", "")[:50]
+      message_id = parsed.get("Message-ID", "")
+    except Exception:
+      pass
+
     async with self._operation_lock:
       client = await self.connect()
       try:
@@ -319,30 +339,46 @@ class IMAPClient:
         )
       except Exception as e:
         _logger.warning("IMAP APPEND failed: %s", e)
+        log_email_appended(
+          account=self.account.name,
+          folder=safe_folder,
+          success=False,
+          message_id=message_id,
+          subject_prefix=subject_prefix,
+          message_size=len(message_bytes),
+          error="Failed to append message",
+        )
         raise RuntimeError("Failed to append message. Check server logs for details.") from e
 
       if status != "OK":
         error_text = _decode_append_error(data)
         _logger.warning("IMAP APPEND failed: %s", error_text)
 
-        if "[OVERQUOTA]" in error_text:
-          raise RuntimeError("Mailbox quota exceeded. Contact administrator.")
-        if "[NOPERM]" in error_text:
-          raise RuntimeError("Permission denied. Check server logs for details.")
-        if "[TRYCREATE]" in error_text:
-          raise RuntimeError("Folder does not exist")
+        mapped_message = _get_append_error_message(error_text)
+        if mapped_message is not None:
+          log_email_appended(
+            account=self.account.name,
+            folder=safe_folder,
+            success=False,
+            message_id=message_id,
+            subject_prefix=subject_prefix,
+            message_size=len(message_bytes),
+            error=mapped_message,
+          )
+          raise RuntimeError(mapped_message)
+
+        log_email_appended(
+          account=self.account.name,
+          folder=safe_folder,
+          success=False,
+          message_id=message_id,
+          subject_prefix=subject_prefix,
+          message_size=len(message_bytes),
+          error="Failed to append message",
+        )
         raise RuntimeError("Failed to append message")
 
     # Audit log the successful append
-    subject_prefix = ""
-    message_id: str | None = None
-    try:
-      parsed = email.message_from_bytes(message_bytes)
-      subject_prefix = parsed.get("Subject", "")[:50]
-      message_id = parsed.get("Message-ID", "")
-    except Exception:
-      pass
-
     log_email_appended(
       account=self.account.name,
       folder=safe_folder,
