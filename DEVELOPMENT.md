@@ -30,6 +30,14 @@ wrappers, connection pooling, and a FastMCP server.
 - Fixed `SMTPClient._auto_append()` to log successful auto-appends with
   `auto_append=True` (was only logging failure paths).
 
+## Post-Review Fixes (P1-001)
+
+- Fixed `_compose_and_send()` to disable `append_to_sent` when the session
+  IMAP client cannot be obtained, so the email still sends without attempting
+  the Sent-folder append. A warning is still shown to the user. Added CLI
+  tests covering `write --sent` and `reply --sent` with an unavailable IMAP
+  client.
+
 ## Review Feedback Fixes (P1-001)
 
 - Aligned `__version__` in `src/simple_email_gw/__init__.py` with `pyproject.toml`
