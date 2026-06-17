@@ -35,7 +35,11 @@ from simple_email_gw.cli.session import Session
 from simple_email_gw.cli.theme import ThemeType, get_theme_manager
 from simple_email_gw.config import ServerConfig, get_accounts, get_recipient_whitelist
 from simple_email_gw.connections.pool import RateLimitError
-from simple_email_gw.safety.sanitize import sanitize_subject
+from simple_email_gw.safety.sanitize import (
+  sanitize_folder_name,
+  sanitize_subject,
+  validate_folder_name,
+)
 from simple_email_gw.smtp.client import WhitelistError, validate_email
 
 logger = logging.getLogger(__name__)
@@ -296,8 +300,16 @@ class EmailCLI:
     table.add_row("cd", "cd <folder>", "Change to a different folder")
     table.add_row("ls", "ls [limit]", "List emails in current folder (default: 50)")
     table.add_row("show", "show <message_id>", "Display an email message")
-    table.add_row("write", "write <recipient>", "Compose a new email")
-    table.add_row("reply", "reply <message_id>", "Reply to an email")
+    table.add_row(
+      "write",
+      "write [--sent|--save-sent] [--sent-folder FOLDER] <recipient>[,<recipient>...]",
+      "Compose a new email",
+    )
+    table.add_row(
+      "reply",
+      "reply [--sent|--save-sent] [--sent-folder FOLDER] <message_id>",
+      "Reply to an email",
+    )
     table.add_row("delete", "delete <message_id>", "Delete an email")
     table.add_row("move", "move <message_id> <folder>", "Move email to a folder")
     table.add_row("status", "status", "Show current session status")
@@ -643,11 +655,54 @@ class EmailCLI:
     validate_email(from_header)
     return from_header
 
+  def _parse_compose_flags(self, args: list[str]) -> tuple[list[str], bool, str | None]:
+    """Parse optional --sent/--sent-folder flags from command arguments.
+
+    Args:
+      args: Command arguments after the command name.
+
+    Returns:
+      Tuple of (remaining_args, append_requested, append_folder).
+
+    Raises:
+      ValueError: If --sent-folder is missing its value or the folder name is
+        invalid.
+    """
+    append_requested = False
+    append_folder: str | None = None
+    remaining: list[str] = []
+
+    i = 0
+    while i < len(args):
+      arg = args[i]
+      if arg in ("--sent", "--save-sent"):
+        append_requested = True
+        i += 1
+      elif arg == "--sent-folder":
+        if i + 1 >= len(args):
+          raise ValueError("--sent-folder requires a folder name")
+        append_folder = args[i + 1]
+        i += 2
+      else:
+        remaining.append(arg)
+        i += 1
+
+    if append_folder is not None and not append_requested:
+      raise ValueError("--sent-folder requires --sent or --save-sent")
+
+    if append_folder is not None:
+      # Defense-in-depth validation matching the MCP layer
+      append_folder = sanitize_folder_name(validate_folder_name(append_folder))
+
+    return remaining, append_requested, append_folder
+
   async def _compose_and_send(
     self,
     draft: EmailDraft,
     body_prompt: str = "Body:",
     quoted_body: str = "",
+    append_to_sent: bool = False,
+    append_folder: str | None = None,
   ) -> None:
     """Collect body input, preview, confirm, and send an email draft.
 
@@ -656,14 +711,20 @@ class EmailCLI:
     1. Body collection loop with Ctrl+D/Ctrl+C handling
     2. Empty body warning + confirmation
     3. Preview + confirm_send() loop (y/n/e)
-    4. SMTP send with spinner
-    5. Success/error display
+    4. Optional interactive "Save to Sent?" confirmation
+    5. SMTP send with spinner (and optional IMAP auto-append)
+    6. Success/error display
 
     Args:
         draft: Email draft with pre-populated metadata (to, subject, etc.).
         body_prompt: Prompt text for body input.
         quoted_body: Optional quoted text to append after user input (for replies).
+        append_to_sent: Whether the user requested saving a copy to Sent.
+        append_folder: Optional Sent folder override.
     """
+    draft.append_to_sent = append_to_sent
+    draft.append_folder = append_folder
+
     user_body = ""
 
     while True:
@@ -708,38 +769,77 @@ class EmailCLI:
           display_warning(self.console, f"{mode_label} discarded.")
           return
 
-      result = await confirm_send(
+      confirm_result = await confirm_send(
         self.console,
         draft,
         self.prompt_session,
         from_addr=self.session.current_account.username if self.session.current_account else "",
       )
 
-      if result is True:
+      if confirm_result is True:
         break
-      elif result is False:
+      elif confirm_result is False:
         mode_label = "Email" if draft.mode == "compose" else "Reply"
         display_warning(self.console, f"{mode_label} discarded.")
         return
-      elif result is None:
+      elif confirm_result is None:
         mode_label = "body" if draft.mode == "compose" else "reply"
         self.console.print(f"[dim]Editing {mode_label}. Current text preserved.[/dim]")
         continue
+
+    # Interactive Sent-folder confirmation when requested
+    final_append_to_sent = append_to_sent
+    final_append_folder = append_folder
+    if append_to_sent:
+      self.console.print("\n[bold]Save a copy to Sent folder? (y/n): [/bold]")
+      try:
+        resp = await self.prompt_session.prompt_async("")
+        if resp.strip().lower() not in ("y", "yes"):
+          final_append_to_sent = False
+      except (EOFError, KeyboardInterrupt):
+        final_append_to_sent = False
+
+    imap_client = None
+    if final_append_to_sent:
+      try:
+        imap_client = await self.session.get_imap_client()
+      except Exception as e:
+        display_warning(
+          self.console,
+          f"Could not access IMAP client for Sent folder: {e}",
+        )
 
     # Send email
     try:
       with self.console.status("[bold green]Sending...[/bold green]"):
         client = await self.session.get_smtp_client()
-        await client.send_email(
-          to=draft.to,
-          subject=draft.subject,
-          body=draft.body,
-          cc=draft.cc or None,
-          bcc=draft.bcc or None,
-          in_reply_to=draft.in_reply_to if draft.in_reply_to else None,
-          references=draft.references if draft.references else None,
-        )
+        if draft.mode == "reply":
+          result = await client.reply_email(
+            to=draft.to[0],
+            subject=draft.subject,
+            body=draft.body,
+            in_reply_to=draft.in_reply_to or "",
+            references=draft.references if draft.references else None,
+            append_to_sent=final_append_to_sent,
+            append_folder=final_append_folder,
+            imap_client=imap_client,
+          )
+        else:
+          result = await client.send_email(
+            to=draft.to,
+            subject=draft.subject,
+            body=draft.body,
+            cc=draft.cc or None,
+            bcc=draft.bcc or None,
+            in_reply_to=draft.in_reply_to if draft.in_reply_to else None,
+            references=draft.references if draft.references else None,
+            append_to_sent=final_append_to_sent,
+            append_folder=final_append_folder,
+            imap_client=imap_client,
+          )
       mode_label = "Email" if draft.mode == "compose" else "Reply"
+      if isinstance(result, dict) and result.get("append_warning"):
+        display_warning(self.console, str(result["append_warning"]))
       display_success(self.console, f"{mode_label} sent to {len(draft.to)} recipient(s)")
     except (ValueError, WhitelistError):
       mode_label = "email" if draft.mode == "compose" else "reply"
@@ -783,10 +883,21 @@ class EmailCLI:
       )
       return
 
+    # Parse optional --sent/--sent-folder flags
+    try:
+      args, append_requested, append_folder = self._parse_compose_flags(args)
+    except ValueError as e:
+      display_error(
+        self.console,
+        str(e),
+        "Usage: write [--sent|--save-sent] [--sent-folder FOLDER] <recipient>[,<recipient>...]",
+      )
+      return
+
     if not args:
       display_error(
         self.console,
-        "Usage: write <recipient>[,<recipient>...]",
+        "Usage: write [--sent|--save-sent] [--sent-folder FOLDER] <recipient>[,<recipient>...]",
         "Provide at least one recipient email address",
       )
       return
@@ -876,7 +987,11 @@ class EmailCLI:
         return
 
     draft = EmailDraft(to=to, subject=subject, cc=cc, bcc=bcc, mode="compose")
-    await self._compose_and_send(draft)
+    await self._compose_and_send(
+      draft,
+      append_to_sent=append_requested,
+      append_folder=append_folder,
+    )
 
   async def _cmd_reply(self, args: list[str]) -> None:
     """Reply to an existing email.
@@ -896,10 +1011,21 @@ class EmailCLI:
       )
       return
 
+    # Parse optional --sent/--sent-folder flags
+    try:
+      args, append_requested, append_folder = self._parse_compose_flags(args)
+    except ValueError as e:
+      display_error(
+        self.console,
+        str(e),
+        "Usage: reply [--sent|--save-sent] [--sent-folder FOLDER] <message_id>",
+      )
+      return
+
     if not args:
       display_error(
         self.console,
-        "Usage: reply <message_id>",
+        "Usage: reply [--sent|--save-sent] [--sent-folder FOLDER] <message_id>",
         "Provide a numeric message ID",
       )
       return
@@ -1001,6 +1127,8 @@ class EmailCLI:
       draft,
       body_prompt="Enter your reply:",
       quoted_body=quoted_body,
+      append_to_sent=append_requested,
+      append_folder=append_folder,
     )
 
   async def _cmd_delete(self, args: list[str]) -> None:

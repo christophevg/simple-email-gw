@@ -51,12 +51,22 @@ class EmailDraft:
   in_reply_to: str | None = None
   references: list[str] = field(default_factory=list)
   mode: str = "compose"  # "compose" or "reply"
+  append_to_sent: bool = False
+  append_folder: str | None = None
+
+  def _format_save_to_sent(self) -> str:
+    """Return a human-readable label for the Sent-folder save option."""
+    if not self.append_to_sent:
+      return "No"
+    if self.append_folder:
+      return f"Yes ({self.append_folder})"
+    return "Yes (auto-detected)"
 
   def to_preview_dict(self) -> dict[str, str]:
     """Convert draft to preview dictionary for display.
 
     Returns:
-      Dictionary with formatted to, cc, bcc, subject, body fields.
+      Dictionary with formatted to, cc, bcc, subject, body, and save fields.
     """
     return {
       "to": ", ".join(self.to) if self.to else "(none)",
@@ -65,6 +75,7 @@ class EmailDraft:
       "subject": self.subject if self.subject else "(no subject)",
       "body": self.body,
       "mode": self.mode,
+      "save_to_sent": self._format_save_to_sent(),
     }
 
 
@@ -436,6 +447,7 @@ async def confirm_send(
   table.add_row("CC", preview.get("cc", "(none)"))
   table.add_row("BCC", preview.get("bcc", "(none)"))
   table.add_row("Subject", preview.get("subject", "(no subject)"))
+  table.add_row("Save to Sent", preview.get("save_to_sent", "No"))
 
   console.print(table)
 
