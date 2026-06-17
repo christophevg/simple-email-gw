@@ -248,7 +248,7 @@ class IMAPClient:
 
     async with self._operation_lock:
       client = await self.connect()
-      status, data = await client.create(safe_folder)
+      status, data = await client.create(_quote_mailbox_name(safe_folder))
 
       if status == "OK":
         return True
@@ -418,7 +418,7 @@ class IMAPClient:
     safe_folder = sanitize_folder_name(folder)
     async with self._operation_lock:
       client = await self.connect()
-      status, data = await client.select(safe_folder)
+      status, data = await client.select(_quote_mailbox_name(safe_folder))
 
       if status != "OK":
         raise RuntimeError(f"Failed to select folder {safe_folder}: {status}")
@@ -446,7 +446,7 @@ class IMAPClient:
     safe_folder = sanitize_folder_name(folder)
     async with self._operation_lock:
       client = await self.connect()
-      status, data = await client.select(safe_folder)
+      status, data = await client.select(_quote_mailbox_name(safe_folder))
       if status != "OK":
         raise RuntimeError(f"Failed to select folder {safe_folder}: {status}")
       self._selected_folder = safe_folder
@@ -490,7 +490,7 @@ class IMAPClient:
     safe_message_id = sanitize_message_id_numeric(message_id)
     async with self._operation_lock:
       client = await self.connect()
-      status, data = await client.select(safe_folder)
+      status, data = await client.select(_quote_mailbox_name(safe_folder))
       if status != "OK":
         raise RuntimeError(f"Failed to select folder {safe_folder}: {status}")
       self._selected_folder = safe_folder
@@ -550,21 +550,21 @@ class IMAPClient:
     safe_message_id = sanitize_message_id_numeric(message_id)
     async with self._operation_lock:
       client = await self.connect()
-      status, data = await client.select(safe_source)
+      status, data = await client.select(_quote_mailbox_name(safe_source))
       if status != "OK":
         raise RuntimeError(f"Failed to select folder {safe_source}: {status}")
       self._selected_folder = safe_source
 
       # Use atomic MOVE if server supports RFC 6851
       if self.has_capability("MOVE"):
-        status, _ = await client.move(safe_message_id, safe_dest)
+        status, _ = await client.move(safe_message_id, _quote_mailbox_name(safe_dest))
         if status != "OK":
           raise RuntimeError(f"Failed to move message: {status}")
         return True
 
       # Fallback: non-atomic COPY+STORE+EXPUNGE
       # WARNING: Not atomic - message may exist in both folders on failure
-      status, _ = await client.copy(safe_message_id, safe_dest)
+      status, _ = await client.copy(safe_message_id, _quote_mailbox_name(safe_dest))
       if status != "OK":
         raise RuntimeError(f"Failed to copy message: {status}")
 
@@ -586,7 +586,7 @@ class IMAPClient:
     safe_message_id = sanitize_message_id_numeric(message_id)
     async with self._operation_lock:
       client = await self.connect()
-      status, data = await client.select(safe_folder)
+      status, data = await client.select(_quote_mailbox_name(safe_folder))
       if status != "OK":
         raise RuntimeError(f"Failed to select folder {safe_folder}: {status}")
       self._selected_folder = safe_folder
@@ -612,7 +612,7 @@ class IMAPClient:
     safe_message_id = sanitize_message_id_numeric(message_id)
     async with self._operation_lock:
       client = await self.connect()
-      status, data = await client.select(safe_folder)
+      status, data = await client.select(_quote_mailbox_name(safe_folder))
       if status != "OK":
         raise RuntimeError(f"Failed to select folder {safe_folder}: {status}")
       self._selected_folder = safe_folder
@@ -654,7 +654,7 @@ class IMAPClient:
 
     async with self._operation_lock:
       client = await self.connect()
-      status, data = await client.select(safe_folder)
+      status, data = await client.select(_quote_mailbox_name(safe_folder))
       if status != "OK":
         raise RuntimeError(f"Failed to select folder {safe_folder}: {status}")
       self._selected_folder = safe_folder

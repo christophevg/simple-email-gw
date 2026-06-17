@@ -12,6 +12,20 @@ from simple_email_gw.config import EmailAccount
 from simple_email_gw.imap.client import IMAPClient
 
 
+@pytest.fixture
+def account():
+  return EmailAccount(
+    name="test",
+    imap_host="imap.test.com",
+    imap_port=993,
+    smtp_host="smtp.test.com",
+    smtp_port=587,
+    username="test@test.com",
+    password="test_password",
+    auth_method="password",
+  )
+
+
 class TestFetchMessage:
   """Tests for IMAPClient.fetch_message method."""
 
@@ -706,3 +720,180 @@ class TestAppendMessage:
         await client.append_message("Sent", b"body")
 
     assert lock_acquired is True
+
+
+class TestCreateFolderMailboxQuoting:
+  """Tests that create_folder quotes spaced mailbox names for the IMAP command."""
+
+  @pytest.mark.asyncio
+  async def test_create_folder_quotes_mailbox_with_spaces(self, account):
+    """Folder names with spaces are IMAP-quoted before CREATE."""
+    client = IMAPClient(account)
+    mock_imap = AsyncMock()
+    mock_imap.create = AsyncMock(return_value=("OK", [b"Created"]))
+
+    with patch.object(client, "connect", new_callable=AsyncMock) as mock_connect:
+      mock_connect.return_value = mock_imap
+      result = await client.create_folder("Sent Items")
+
+    assert result is True
+    mock_imap.create.assert_awaited_once_with('"Sent Items"')
+
+
+class TestSelectFolderMailboxQuoting:
+  """Tests that select_folder quotes spaced mailbox names for the IMAP command."""
+
+  @pytest.mark.asyncio
+  async def test_select_folder_quotes_mailbox_with_spaces(self, account):
+    """Folder names with spaces are IMAP-quoted before SELECT."""
+    client = IMAPClient(account)
+    mock_imap = AsyncMock()
+    mock_imap.select = AsyncMock(return_value=("OK", [b"5 EXISTS"]))
+
+    with patch.object(client, "connect", new_callable=AsyncMock) as mock_connect:
+      mock_connect.return_value = mock_imap
+      result = await client.select_folder("Sent Items")
+
+    assert result == {"folder": "Sent Items", "count": 5}
+    mock_imap.select.assert_awaited_once_with('"Sent Items"')
+
+
+class TestSearchMailboxQuoting:
+  """Tests that search quotes spaced mailbox names when selecting."""
+
+  @pytest.mark.asyncio
+  async def test_search_quotes_mailbox_with_spaces(self, account):
+    """Folder names with spaces are IMAP-quoted before the implicit SELECT."""
+    client = IMAPClient(account)
+    mock_imap = AsyncMock()
+    mock_imap.select = AsyncMock(return_value=("OK", [b"3 EXISTS"]))
+    search_response = AsyncMock()
+    search_response.result = "OK"
+    search_response.lines = [b"SEARCH 10 11 12"]
+    mock_imap.search = AsyncMock(return_value=search_response)
+
+    with patch.object(client, "connect", new_callable=AsyncMock) as mock_connect:
+      mock_connect.return_value = mock_imap
+      result = await client.search("Sent Items", "ALL", 2)
+
+    assert result == ["11", "12"]
+    mock_imap.select.assert_awaited_once_with('"Sent Items"')
+    mock_imap.search.assert_awaited_once_with("ALL")
+
+
+class TestFetchMessageMailboxQuoting:
+  """Tests that fetch_message quotes spaced mailbox names when selecting."""
+
+  @pytest.mark.asyncio
+  async def test_fetch_message_quotes_mailbox_with_spaces(self, account):
+    """Folder names with spaces are IMAP-quoted before SELECT in fetch."""
+    client = IMAPClient(account)
+    raw_message = (
+      b"From: sender@example.com\r\n"
+      b"To: recipient@example.com\r\n"
+      b"Subject: Spaced Folder\r\n"
+      b"Message-ID: <msg789@example.com>\r\n"
+      b"Date: Mon, 01 Jan 2024 00:00:00 +0000\r\n"
+      b"\r\n"
+      b"Hello world"
+    )
+
+    mock_imap = AsyncMock()
+    mock_imap.select = AsyncMock(return_value=("OK", [b"1 EXISTS"]))
+    mock_imap.fetch = AsyncMock(
+      return_value=(
+        "OK",
+        [
+          b"1 FETCH (BODY[] {" + str(len(raw_message)).encode() + b"}",
+          bytearray(raw_message),
+          b" FLAGS (\\Seen)",
+          b"FETCH completed",
+        ],
+      )
+    )
+
+    with patch.object(client, "connect", new_callable=AsyncMock) as mock_connect:
+      mock_connect.return_value = mock_imap
+      result = await client.fetch_message("1", folder="Sent Items")
+
+    assert result["folder"] == "Sent Items"
+    assert result["subject"] == "Spaced Folder"
+    mock_imap.select.assert_awaited_once_with('"Sent Items"')
+
+
+class TestDeleteMessageMailboxQuoting:
+  """Tests that delete_message quotes spaced mailbox names when selecting."""
+
+  @pytest.mark.asyncio
+  async def test_delete_message_quotes_mailbox_with_spaces(self, account):
+    """Folder names with spaces are IMAP-quoted before SELECT in delete."""
+    client = IMAPClient(account)
+    mock_imap = AsyncMock()
+    mock_imap.select = AsyncMock(return_value=("OK", [b"1 EXISTS"]))
+    mock_imap.store = AsyncMock(return_value=("OK", []))
+    mock_imap.expunge = AsyncMock(return_value=("OK", []))
+
+    with patch.object(client, "connect", new_callable=AsyncMock) as mock_connect:
+      mock_connect.return_value = mock_imap
+      result = await client.delete_message("42", folder="Sent Items")
+
+    assert result is True
+    mock_imap.select.assert_awaited_once_with('"Sent Items"')
+
+
+class TestMoveMessageMailboxQuoting:
+  """Tests that move_message quotes spaced source and destination mailboxes."""
+
+  @pytest.mark.asyncio
+  async def test_move_message_quotes_source_and_dest_with_spaces_using_move(self, account):
+    """MOVE capability quotes both source (SELECT) and destination mailboxes."""
+    client = IMAPClient(account)
+    client._capabilities = {"MOVE"}
+    mock_imap = AsyncMock()
+    mock_imap.select = AsyncMock(return_value=("OK", [b"1 EXISTS"]))
+    mock_imap.move = AsyncMock(return_value=("OK", []))
+
+    with patch.object(client, "connect", new_callable=AsyncMock) as mock_connect:
+      mock_connect.return_value = mock_imap
+      result = await client.move_message("7", "Sent Items", "Archived Items")
+
+    assert result is True
+    mock_imap.select.assert_awaited_once_with('"Sent Items"')
+    mock_imap.move.assert_awaited_once_with("7", '"Archived Items"')
+
+  @pytest.mark.asyncio
+  async def test_move_message_quotes_source_and_dest_with_spaces_fallback_copy(self, account):
+    """COPY fallback quotes both source (SELECT) and destination mailboxes."""
+    client = IMAPClient(account)
+    mock_imap = AsyncMock()
+    mock_imap.select = AsyncMock(return_value=("OK", [b"1 EXISTS"]))
+    mock_imap.copy = AsyncMock(return_value=("OK", []))
+    mock_imap.store = AsyncMock(return_value=("OK", []))
+    mock_imap.expunge = AsyncMock(return_value=("OK", []))
+
+    with patch.object(client, "connect", new_callable=AsyncMock) as mock_connect:
+      mock_connect.return_value = mock_imap
+      result = await client.move_message("7", "Sent Items", "Archived Items")
+
+    assert result is True
+    mock_imap.select.assert_awaited_once_with('"Sent Items"')
+    mock_imap.copy.assert_awaited_once_with("7", '"Archived Items"')
+
+
+class TestMarkMessageMailboxQuoting:
+  """Tests that mark_message quotes spaced mailbox names when selecting."""
+
+  @pytest.mark.asyncio
+  async def test_mark_message_quotes_mailbox_with_spaces(self, account):
+    """Folder names with spaces are IMAP-quoted before SELECT in mark."""
+    client = IMAPClient(account)
+    mock_imap = AsyncMock()
+    mock_imap.select = AsyncMock(return_value=("OK", [b"1 EXISTS"]))
+    mock_imap.store = AsyncMock(return_value=("OK", []))
+
+    with patch.object(client, "connect", new_callable=AsyncMock) as mock_connect:
+      mock_connect.return_value = mock_imap
+      result = await client.mark_message("3", "Sent Items", "\\Seen")
+
+    assert result is True
+    mock_imap.select.assert_awaited_once_with('"Sent Items"')

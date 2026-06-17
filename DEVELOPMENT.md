@@ -58,6 +58,12 @@ wrappers, connection pooling, and a FastMCP server.
   `get_append_max_size()` default/invalid fallback, and audit-log truncation
   boundaries.
 
+- Applied RFC 3501 mailbox-name quoting (`_quote_mailbox_name`) across all
+  `aioimaplib` mailbox arguments in `IMAPClient`: `create_folder`,
+  `select_folder`, `search`, `fetch_message`, `delete_message`, `mark_message`,
+  `download_attachment`, `move_message` (source and destination), and
+  `append_message`. Returned result dicts still use the original unquoted folder
+  names.
 - Added CLI support for auto-append-to-Sent on `write` and `reply` commands:
   - `--sent` / `--save-sent` opt-in flag (default `False`).
   - `--sent-folder FOLDER` override (must be paired with `--sent`).
