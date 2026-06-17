@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import os
 import re
 import ssl
@@ -11,17 +12,22 @@ from email.message import EmailMessage, Message
 from email.mime.base import MIMEBase
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
+from email.utils import make_msgid
+from typing import Any
 
 import aiosmtplib
 
 from simple_email_gw.config import EmailAccount, get_recipient_whitelist
-from simple_email_gw.safety.audit import log_email_sent
+from simple_email_gw.imap.client import IMAPClient
+from simple_email_gw.safety.audit import log_email_appended, log_email_sent
 from simple_email_gw.safety.sanitize import (
   sanitize_filename,
   sanitize_message_id,
   sanitize_references,
   sanitize_subject,
 )
+
+_logger = logging.getLogger(__name__)
 
 # Email address validation pattern
 EMAIL_PATTERN = re.compile(r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$")
@@ -63,6 +69,82 @@ class SMTPClient:
     self.account = account
     self._lock = asyncio.Lock()
 
+  async def _auto_append(
+    self,
+    msg: Message,
+    safe_subject: str,
+    append_to_sent: bool,
+    append_folder: str | None,
+    imap_client: IMAPClient | None,
+  ) -> dict[str, Any]:
+    """Optionally append a copy of a sent message to the Sent folder."""
+    append_result: dict[str, Any] = {
+      "appended": False,
+      "append_folder": None,
+      "append_warning": None,
+    }
+    if not append_to_sent:
+      return append_result
+
+    message_bytes = msg.as_bytes()
+    message_id = msg.get("Message-ID", "")
+    message_size = len(message_bytes)
+
+    if imap_client is None:
+      append_result["append_warning"] = "append_to_sent requested but no IMAP client provided"
+      _logger.warning("Auto-append skipped: no IMAP client provided")
+      log_email_appended(
+        account=self.account.name,
+        folder="",
+        success=False,
+        message_id=message_id,
+        subject_prefix=safe_subject,
+        message_size=message_size,
+        auto_append=True,
+        error="No IMAP client provided",
+      )
+      return append_result
+
+    target_folder = append_folder or await imap_client.find_sent_folder()
+    if target_folder is None:
+      append_result["append_warning"] = "Sent folder not found"
+      _logger.warning("Auto-append skipped: Sent folder not found")
+      log_email_appended(
+        account=self.account.name,
+        folder="",
+        success=False,
+        message_id=message_id,
+        subject_prefix=safe_subject,
+        message_size=message_size,
+        auto_append=True,
+        error="Sent folder not found",
+      )
+      return append_result
+
+    try:
+      await imap_client.append_message(
+        folder=target_folder,
+        message_bytes=message_bytes,
+        flags=["\\Seen"],
+      )
+      append_result["appended"] = True
+      append_result["append_folder"] = target_folder
+    except Exception as e:
+      _logger.warning("Auto-append to Sent folder failed: %s", e)
+      append_result["append_warning"] = "Could not save copy to Sent folder"
+      log_email_appended(
+        account=self.account.name,
+        folder=target_folder,
+        success=False,
+        message_id=message_id,
+        subject_prefix=safe_subject,
+        message_size=message_size,
+        auto_append=True,
+        error="Could not save copy to Sent folder",
+      )
+
+    return append_result
+
   async def send_email(
     self,
     to: list[str],
@@ -74,12 +156,18 @@ class SMTPClient:
     attachments: list[str] | None = None,
     in_reply_to: str | None = None,
     references: list[str] | None = None,
-  ) -> dict[str, str]:
+    append_to_sent: bool = False,
+    append_folder: str | None = None,
+    imap_client: IMAPClient | None = None,
+  ) -> dict[str, Any]:
     """Send an email message with optional HTML body and attachments.
 
     Validates all recipient addresses, checks whitelist restrictions,
     and sanitizes headers to prevent CRLF injection. The message is sent
-    via SMTP with TLS 1.2 minimum encryption.
+    via SMTP with TLS 1.2 minimum encryption. When ``append_to_sent`` is
+    True and an IMAP client is provided, a copy of the sent message is
+    appended to the account's Sent folder; append failures are surfaced
+    as a warning rather than failing the send.
 
     Args:
       to: List of primary recipient email addresses
@@ -91,9 +179,12 @@ class SMTPClient:
       attachments: Optional list of file paths to attach
       in_reply_to: Optional Message-ID of the original message being replied to
       references: Optional list of Message-IDs in the thread history
+      append_to_sent: Whether to append a copy to the Sent folder
+      append_folder: Optional override for the Sent folder name
+      imap_client: Optional IMAP client for the auto-append operation
 
     Returns:
-      Dict with 'status', 'recipients', and 'message' keys
+      Dict with send status and optional append metadata
 
     Raises:
       ValueError: If any email address is invalid
@@ -131,6 +222,7 @@ class SMTPClient:
     msg["From"] = self.account.username
     msg["To"] = ", ".join(to)
     msg["Subject"] = safe_subject
+    msg["Message-ID"] = make_msgid(domain=self.account.smtp_host)
 
     if cc:
       msg["Cc"] = ", ".join(cc)
@@ -163,6 +255,15 @@ class SMTPClient:
     # Send
     result = await self._send(msg, to + (cc or []) + (bcc or []))
 
+    # Optional auto-append to Sent folder
+    append_result = await self._auto_append(
+      msg=msg,
+      safe_subject=safe_subject,
+      append_to_sent=append_to_sent,
+      append_folder=append_folder,
+      imap_client=imap_client,
+    )
+
     # Audit log
     log_email_sent(
       account=self.account.name,
@@ -171,7 +272,7 @@ class SMTPClient:
       has_attachments=has_attachments,
     )
 
-    return result
+    return {**result, **append_result}
 
   async def reply_email(
     self,
@@ -181,7 +282,10 @@ class SMTPClient:
     in_reply_to: str,
     references: list[str] | None = None,
     html_body: str | None = None,
-  ) -> dict[str, str]:
+    append_to_sent: bool = False,
+    append_folder: str | None = None,
+    imap_client: IMAPClient | None = None,
+  ) -> dict[str, Any]:
     """Send a reply preserving thread context.
 
     Creates a reply message with proper In-Reply-To and References headers
@@ -195,9 +299,12 @@ class SMTPClient:
       in_reply_to: Message-ID of the original message being replied to
       references: Optional list of Message-IDs in the thread history
       html_body: Optional HTML version of the body
+      append_to_sent: Whether to append a copy to the Sent folder
+      append_folder: Optional override for the Sent folder name
+      imap_client: Optional IMAP client for the auto-append operation
 
     Returns:
-      Dict with 'status', 'recipients', and 'message' keys
+      Dict with send status and optional append metadata
 
     Raises:
       ValueError: If email address or Message-IDs are invalid
@@ -224,6 +331,7 @@ class SMTPClient:
     msg["From"] = self.account.username
     msg["To"] = to
     msg["Subject"] = safe_subject
+    msg["Message-ID"] = make_msgid(domain=self.account.smtp_host)
     msg["In-Reply-To"] = safe_in_reply_to
 
     if safe_references:
@@ -235,6 +343,15 @@ class SMTPClient:
 
     result = await self._send(msg, [to])
 
+    # Optional auto-append to Sent folder
+    append_result = await self._auto_append(
+      msg=msg,
+      safe_subject=safe_subject,
+      append_to_sent=append_to_sent,
+      append_folder=append_folder,
+      imap_client=imap_client,
+    )
+
     # Audit log
     log_email_sent(
       account=self.account.name,
@@ -243,7 +360,7 @@ class SMTPClient:
       has_attachments=False,
     )
 
-    return result
+    return {**result, **append_result}
 
   async def forward_email(
     self,
@@ -252,7 +369,7 @@ class SMTPClient:
     original_from: str,
     original_date: str,
     original_body: str,
-  ) -> dict[str, str]:
+  ) -> dict[str, Any]:
     """Forward an email with original content."""
     forward_body = f"\n\n---------- Forwarded message ----------\nFrom: {original_from}\nDate: {original_date}\n\n{original_body}"
 

@@ -7,6 +7,7 @@ import threading
 from typing import Any
 
 from simple_email_gw.config import EmailAccount
+from simple_email_gw.imap.sync_client import SyncIMAPClient
 from simple_email_gw.smtp.client import SMTPClient, WhitelistError
 
 
@@ -96,7 +97,10 @@ class SyncSMTPClient:
     bcc: list[str] | None = None,
     html_body: str | None = None,
     attachments: list[str] | None = None,
-  ) -> dict[str, str]:
+    append_to_sent: bool = False,
+    append_folder: str | None = None,
+    imap_client: SyncIMAPClient | None = None,
+  ) -> dict[str, Any]:
     """Send an email message.
 
     Args:
@@ -107,9 +111,12 @@ class SyncSMTPClient:
       bcc: Optional list of BCC recipients
       html_body: Optional HTML version of the body
       attachments: Optional list of file paths to attach
+      append_to_sent: Whether to append a copy to the Sent folder
+      append_folder: Optional override for the Sent folder name
+      imap_client: Optional SyncIMAPClient for the auto-append operation
 
     Returns:
-      Dict with 'status', 'recipients', and 'message' keys
+      Dict with send status and optional append metadata
 
     Raises:
       RuntimeError: If send fails
@@ -117,6 +124,7 @@ class SyncSMTPClient:
       WhitelistError: If recipients not in whitelist
       FileNotFoundError: If attachment file not found
     """
+    async_imap_client = imap_client._async_client if imap_client else None
     return self._run_coroutine(  # type: ignore[no-any-return]
       self._async_client.send_email(
         to=to,
@@ -126,6 +134,9 @@ class SyncSMTPClient:
         bcc=bcc,
         html_body=html_body,
         attachments=attachments,
+        append_to_sent=append_to_sent,
+        append_folder=append_folder,
+        imap_client=async_imap_client,
       )
     )
 
@@ -137,7 +148,10 @@ class SyncSMTPClient:
     in_reply_to: str,
     references: list[str] | None = None,
     html_body: str | None = None,
-  ) -> dict[str, str]:
+    append_to_sent: bool = False,
+    append_folder: str | None = None,
+    imap_client: SyncIMAPClient | None = None,
+  ) -> dict[str, Any]:
     """Reply to an email message.
 
     Args:
@@ -147,15 +161,19 @@ class SyncSMTPClient:
       in_reply_to: Message-ID being replied to
       references: Optional list of message IDs for References header
       html_body: Optional HTML version of the body
+      append_to_sent: Whether to append a copy to the Sent folder
+      append_folder: Optional override for the Sent folder name
+      imap_client: Optional SyncIMAPClient for the auto-append operation
 
     Returns:
-      Dict with 'status', 'recipients', and 'message' keys
+      Dict with send status and optional append metadata
 
     Raises:
       RuntimeError: If send fails
       ValueError: If email addresses are invalid
       WhitelistError: If recipient not in whitelist
     """
+    async_imap_client = imap_client._async_client if imap_client else None
     return self._run_coroutine(  # type: ignore[no-any-return]
       self._async_client.reply_email(
         to=to,
@@ -164,6 +182,9 @@ class SyncSMTPClient:
         in_reply_to=in_reply_to,
         references=references,
         html_body=html_body,
+        append_to_sent=append_to_sent,
+        append_folder=append_folder,
+        imap_client=async_imap_client,
       )
     )
 

@@ -10,6 +10,7 @@ from simple_email_gw.safety.sanitize import (
   sanitize_message_id_numeric,
   sanitize_references,
   sanitize_subject,
+  validate_append_flags,
   validate_folder_name,
 )
 
@@ -327,3 +328,32 @@ class TestValidateFolderName:
     """Test mixed case Inbox is rejected."""
     with pytest.raises(ValueError, match="reserved folder name"):
       validate_folder_name("Inbox")
+
+
+class TestValidateAppendFlags:
+  """Tests for validate_append_flags helper."""
+
+  def test_empty_flags_returns_empty_list(self):
+    """Test None flags return empty list."""
+    result = validate_append_flags(None)
+    assert result == []
+
+  def test_valid_seen_flag(self):
+    """Test \\Seen flag passes validation."""
+    result = validate_append_flags(["\\Seen"])
+    assert result == ["\\Seen"]
+
+  def test_valid_multiple_flags(self):
+    """Test multiple allowlisted flags pass validation."""
+    result = validate_append_flags(["\\Seen", "\\Draft"])
+    assert result == ["\\Seen", "\\Draft"]
+
+  def test_rejects_invalid_flag(self):
+    """Test flag outside allowlist is rejected."""
+    with pytest.raises(ValueError, match="Invalid IMAP flag"):
+      validate_append_flags(["\\Deleted"])
+
+  def test_rejects_mixed_invalid_flag(self):
+    """Test a mix of valid and invalid flags is rejected."""
+    with pytest.raises(ValueError, match="Invalid IMAP flag"):
+      validate_append_flags(["\\Seen", "\\Evil"])

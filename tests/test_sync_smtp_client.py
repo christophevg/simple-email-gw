@@ -181,6 +181,9 @@ class TestSyncSMTPClientSendEmail:
           bcc=None,
           html_body=None,
           attachments=None,
+          append_to_sent=False,
+          append_folder=None,
+          imap_client=None,
         )
         assert result == {
           "status": "sent",
@@ -245,6 +248,8 @@ class TestSyncSMTPClientSendEmail:
           bcc=["bcc@example.com"],
           html_body="<p>Hello</p>",
           attachments=["/tmp/file.pdf"],
+          append_to_sent=True,
+          append_folder="Custom",
         )
         mock_send.assert_called_once_with(
           to=["test@example.com"],
@@ -254,6 +259,9 @@ class TestSyncSMTPClientSendEmail:
           bcc=["bcc@example.com"],
           html_body="<p>Hello</p>",
           attachments=["/tmp/file.pdf"],
+          append_to_sent=True,
+          append_folder="Custom",
+          imap_client=None,
         )
     finally:
       client.__exit__(None, None, None)
@@ -363,6 +371,9 @@ class TestSyncSMTPClientReplyEmail:
           in_reply_to="<msg123@test.com>",
           references=None,
           html_body=None,
+          append_to_sent=False,
+          append_folder=None,
+          imap_client=None,
         )
         assert result == {
           "status": "sent",
@@ -1008,6 +1019,114 @@ class TestSyncSMTPClientIntegration:
           assert result["status"] == "sent"
     finally:
       client.__exit__(None, None, None)
+
+
+class TestSyncSMTPClientAutoAppend:
+  """Test auto-append parameter forwarding."""
+
+  def test_send_email_passes_imap_client_to_async(self):
+    """
+    Given: SyncSMTPClient and SyncIMAPClient instances
+    When: send_email is called with append_to_sent=True and imap_client
+    Then: The underlying async IMAP client is forwarded
+    """
+    from simple_email_gw.imap.sync_client import SyncIMAPClient
+
+    account = EmailAccount(
+      name="test",
+      imap_host="imap.example.com",
+      smtp_host="smtp.example.com",
+      username="test@example.com",
+    )
+    smtp_client = SyncSMTPClient(account)
+    imap_client = SyncIMAPClient(account)
+    try:
+      with patch.object(
+        smtp_client._async_client, "send_email", new_callable=AsyncMock
+      ) as mock_send:
+        mock_send.return_value = {
+          "status": "sent",
+          "recipients": "test@example.com",
+          "message": "OK",
+          "appended": True,
+          "append_folder": "Sent",
+          "append_warning": None,
+        }
+        result = smtp_client.send_email(
+          to=["test@example.com"],
+          subject="Test",
+          body="Hello",
+          append_to_sent=True,
+          imap_client=imap_client,
+        )
+        mock_send.assert_called_once_with(
+          to=["test@example.com"],
+          subject="Test",
+          body="Hello",
+          cc=None,
+          bcc=None,
+          html_body=None,
+          attachments=None,
+          append_to_sent=True,
+          append_folder=None,
+          imap_client=imap_client._async_client,
+        )
+        assert result["appended"] is True
+    finally:
+      smtp_client.__exit__(None, None, None)
+      imap_client.disconnect()
+
+  def test_reply_email_passes_imap_client_to_async(self):
+    """
+    Given: SyncSMTPClient and SyncIMAPClient instances
+    When: reply_email is called with append_to_sent=True and imap_client
+    Then: The underlying async IMAP client is forwarded
+    """
+    from simple_email_gw.imap.sync_client import SyncIMAPClient
+
+    account = EmailAccount(
+      name="test",
+      imap_host="imap.example.com",
+      smtp_host="smtp.example.com",
+      username="test@example.com",
+    )
+    smtp_client = SyncSMTPClient(account)
+    imap_client = SyncIMAPClient(account)
+    try:
+      with patch.object(
+        smtp_client._async_client, "reply_email", new_callable=AsyncMock
+      ) as mock_reply:
+        mock_reply.return_value = {
+          "status": "sent",
+          "recipients": "test@example.com",
+          "message": "OK",
+          "appended": True,
+          "append_folder": "Sent",
+          "append_warning": None,
+        }
+        result = smtp_client.reply_email(
+          to="test@example.com",
+          subject="Re: Test",
+          body="Reply",
+          in_reply_to="<msg123@test.com>",
+          append_to_sent=True,
+          imap_client=imap_client,
+        )
+        mock_reply.assert_called_once_with(
+          to="test@example.com",
+          subject="Re: Test",
+          body="Reply",
+          in_reply_to="<msg123@test.com>",
+          references=None,
+          html_body=None,
+          append_to_sent=True,
+          append_folder=None,
+          imap_client=imap_client._async_client,
+        )
+        assert result["appended"] is True
+    finally:
+      smtp_client.__exit__(None, None, None)
+      imap_client.disconnect()
 
   def test_thread_isolation_between_instances(self):
     """

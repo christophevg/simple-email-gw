@@ -60,6 +60,33 @@ def log_email_sent(
   )
 
 
+def log_email_appended(
+  account: str,
+  folder: str,
+  success: bool = True,
+  message_id: str | None = None,
+  subject_prefix: str = "",
+  message_size: int = 0,
+  auto_append: bool = False,
+  error: str | None = None,
+) -> None:
+  """Log an IMAP APPEND operation."""
+  log_event(
+    event="EMAIL_APPENDED",
+    account=account,
+    details={
+      "folder": folder,
+      "message_id": message_id[:50] if message_id else "",
+      "subject_prefix": subject_prefix[:50],
+      "message_size": message_size,
+      "auto_append": auto_append,
+      "success": success,
+      "error": error,
+    },
+    level=logging.INFO if success else logging.WARNING,
+  )
+
+
 def log_auth_attempt(
   account: str,
   success: bool,
