@@ -509,6 +509,27 @@ class TestAppendMessage:
     assert mock_log.call_args.kwargs["success"] is True
 
   @pytest.mark.asyncio
+  async def test_append_message_quotes_folder_with_spaces(self, account):
+    """Folder names containing spaces are IMAP-quoted before APPEND.
+
+    Servers such as iCloud advertise Sent folders as ``Sent Items``; an
+    unquoted mailbox name produces an invalid IMAP command and the server
+    returns a parse error. The client must quote the mailbox argument.
+    """
+    client = IMAPClient(account)
+    mock_imap = AsyncMock()
+    mock_imap.append = AsyncMock(return_value=("OK", []))
+
+    with patch.object(client, "connect", new_callable=AsyncMock) as mock_connect:
+      mock_connect.return_value = mock_imap
+      with patch("simple_email_gw.imap.client.log_email_appended"):
+        result = await client.append_message("Sent Items", b"body", flags=["\\Seen"])
+
+    assert result == {"status": "appended", "folder": "Sent Items"}
+    append_call = mock_imap.append.call_args
+    assert append_call.kwargs["mailbox"] == '"Sent Items"'
+
+  @pytest.mark.asyncio
   async def test_append_message_rejects_invalid_folder(self, account):
     """Invalid folder names raise ValueError before APPEND."""
     client = IMAPClient(account)
