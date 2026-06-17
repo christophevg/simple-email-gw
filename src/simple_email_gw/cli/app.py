@@ -809,6 +809,7 @@ class EmailCLI:
           f"Could not access IMAP client for Sent folder: {e}",
         )
         final_append_to_sent = False
+        final_append_folder = None
 
     # Send email
     try:
