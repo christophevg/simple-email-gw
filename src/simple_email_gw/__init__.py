@@ -23,7 +23,7 @@ from simple_email_gw.safety.sanitize import (
 from simple_email_gw.smtp.client import SMTPClient, WhitelistError, validate_email
 from simple_email_gw.smtp.sync_client import SyncSMTPClient
 
-__version__ = "0.3.0"
+__version__ = "0.3.1"
 __all__ = [
   # Clients
   "IMAPClient",
