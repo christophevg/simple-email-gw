@@ -209,8 +209,8 @@ Default limits:
 Restrict outgoing emails to specific domains or addresses:
 
 ```bash
-EMAIL_RECIPIENT_DOMAINS=gmail.com,icloud.com
-EMAIL_RECIPIENT_ADDRESSES=admin@company.com
+EMAIL_RECIPIENT_WHITELIST_DOMAINS=gmail.com,icloud.com
+EMAIL_RECIPIENT_WHITELIST_ADDRESSES=admin@company.com
 ```
 
 ## Security Features
