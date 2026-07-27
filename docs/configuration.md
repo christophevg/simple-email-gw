@@ -120,6 +120,8 @@ EMAIL_RECIPIENT_WHITELIST_JSON='{
 }'
 ```
 
+> **Behavior when unset**: The whitelist is enabled only when at least one domain or address is non-empty. If the variables are unset, empty, or misspelled, the whitelist is **disabled** and all recipients are allowed (fail-open). Verify the whitelist is active after configuration. The JSON form (`EMAIL_RECIPIENT_WHITELIST_JSON`) enables the whitelist unconditionally when set — the `enabled` field is ignored. To disable the whitelist, unset the env var.
+
 ## Workspace Configuration
 
 Attachment downloads are confined to a workspace directory:
