@@ -685,3 +685,20 @@
     - Map IMAP APPEND errors to generic user-facing messages; never forward raw server text or tracebacks to MCP clients.
     - Ensure SMTP `send_email`/`reply_email` still return success when auto-append fails, with a safe structured warning.
   - **Completed**: 2026-06-17
+
+- [x] **P1-002: Correct recipient whitelist env var names in docs**
+  - Issue: #3
+  - PR: #5
+  - Corrected env var names across README.md, .env.example, docs/cli.md, docs/configuration.md, docs/security.md:
+    - `EMAIL_RECIPIENT_DOMAINS` → `EMAIL_RECIPIENT_WHITELIST_DOMAINS`
+    - `EMAIL_RECIPIENT_ADDRESSES` → `EMAIL_RECIPIENT_WHITELIST_ADDRESSES`
+  - Corrected rate-limit env var names in .env.example and docs/cli.md (`EMAIL_RATE_LIMITS__IMAP_REQUESTS_PER_MINUTE` / `EMAIL_RATE_LIMITS__SMTP_SENDS_PER_HOUR`)
+  - Added fail-open behavior warning to docs/security.md §6 and docs/configuration.md
+  - Added CHANGELOG.md `## Unreleased` section
+  - **Completed**: 2026-07-27
+
+- [x] **P1-003: Isolate test fixtures via autouse conftest fixture**
+  - PR: #4
+  - Added autouse fixture in `tests/conftest.py` to isolate test state between tests
+  - Prerequisite for PR #5 (docs env var correction); merged beforehand
+  - **Completed**: 2026-07-27
