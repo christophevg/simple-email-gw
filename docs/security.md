@@ -108,8 +108,8 @@ Optional whitelist restricts outgoing emails:
 
 ```bash
 # Environment configuration
-EMAIL_RECIPIENT_DOMAINS=trusted.com,partner.org
-EMAIL_RECIPIENT_ADDRESSES=admin@company.com
+EMAIL_RECIPIENT_WHITELIST_DOMAINS=trusted.com,partner.org
+EMAIL_RECIPIENT_WHITELIST_ADDRESSES=admin@company.com
 ```
 
 - Domain-based filtering

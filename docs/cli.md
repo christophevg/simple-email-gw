@@ -277,8 +277,8 @@ EMAIL_PASSWORD=your-app-password
 # EMAIL_RATE_LIMIT_SENDS_PER_HOUR=100
 
 # Optional: Recipient whitelist
-# EMAIL_RECIPIENT_DOMAINS=gmail.com,icloud.com
-# EMAIL_RECIPIENT_ADDRESSES=admin@company.com
+# EMAIL_RECIPIENT_WHITELIST_DOMAINS=gmail.com,icloud.com
+# EMAIL_RECIPIENT_WHITELIST_ADDRESSES=admin@company.com
 ```
 
 ## Security Notes

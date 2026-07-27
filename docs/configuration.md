@@ -99,13 +99,13 @@ Restrict outgoing emails to specific recipients:
 ### Domain Whitelist
 
 ```bash
-EMAIL_RECIPIENT_DOMAINS=gmail.com,icloud.com,company.com
+EMAIL_RECIPIENT_WHITELIST_DOMAINS=gmail.com,icloud.com,company.com
 ```
 
 ### Address Whitelist
 
 ```bash
-EMAIL_RECIPIENT_ADDRESSES=admin@company.com,support@partner.org
+EMAIL_RECIPIENT_WHITELIST_ADDRESSES=admin@company.com,support@partner.org
 ```
 
 ### JSON Configuration
@@ -140,7 +140,7 @@ EMAIL_IMAP_HOST=imap.gmail.com
 EMAIL_SMTP_HOST=smtp.gmail.com
 EMAIL_USERNAME=user@gmail.com
 EMAIL_PASSWORD=app-password
-EMAIL_RECIPIENT_DOMAINS=gmail.com
+EMAIL_RECIPIENT_WHITELIST_DOMAINS=gmail.com
 ```
 
 Load the `.env` file automatically:
