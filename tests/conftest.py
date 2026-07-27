@@ -1,6 +1,7 @@
 """Pytest configuration and fixtures for simple-email-gw tests."""
 
 import asyncio
+import os
 import tempfile
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
@@ -8,6 +9,26 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from simple_email_gw.config import EmailAccount
+
+
+@pytest.fixture(autouse=True)
+def _isolate_email_env(monkeypatch):
+  """Prevent the developer's local .env from leaking into the test suite.
+
+  config.py loads ../.env at import time, which on developer machines may set
+  EMAIL_RECIPIENT_WHITELIST_* (and other EMAIL_*) variables. Without this
+  isolation, send-path tests hit WhitelistError because recipient@example.com
+  is not on the developer's personal whitelist, and CLI compose-flow tests
+  drift because display.get_recipient_whitelist() sees a live whitelist.
+
+  Each test starts with a clean EMAIL_* slate. Tests that need specific env
+  vars set them via monkeypatch.setenv in the test body, which composes with
+  this fixture (the setenv runs after the delenv and overrides it).
+  """
+  for key in list(os.environ.keys()):
+    if key.startswith("EMAIL_"):
+      monkeypatch.delenv(key, raising=False)
+  yield
 
 
 @pytest.fixture
